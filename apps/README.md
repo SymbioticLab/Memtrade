@@ -1,15 +1,18 @@
 # Content
 * [Workload](#workload)
--- [VoltDB](#voltdb)
--- [MemCached](#memcached)
--- [Redis](#redis)
--- [Spark](#spark)
--- [PowerGraph](#powergraph)
--- [TuriCreate](#turicreate) ([Graph Algorithms](#graph-algorithms), [Image Classification](#image-classifications))
--- [Metis](#metis)
+    * [VoltDB](#voltdb)
+    * [MemCached](#memcached)
+    * [Redis](#redis)
+    * [Spark](#spark)
+    * [PowerGraph](#powergraph)
+    * [TuriCreate](#turicreate) ([Graph Algorithms](#graph-algorithms), [Image Classification](#image-classifications))
+    * [Metis](#metis)
 * [CloudLab Configuration](#cloudlab-configuration)
+    * [KVM Installation](#kvm-installation)
+    * [Add 1TB Disk](#add-1tb-disk) 
+    * [Setup Ramdisk](#setup-ramdisk)
 * [Miscellaneous](#miscellaneous)
--- [Call Graph Latency Breakdown](#call-graph-latency-breakdown)
+    * [Call Graph Latency Breakdown](#call-graph-latency-breakdown)
 
 ## Workload
 ## Voltdb
@@ -94,21 +97,21 @@
     make test 
     ```
 - Configure Redis:
--- Edit `/etc/sysctl.conf` and add `vm.overcommit_memory=1`
--- Then reboot or run the command `sysctl vm.overcommit_memory=1` for this to take effect
--- Disable transparent hugepage: 
-    ```sh
-    echo never > /sys/kernel/mm/transparent_hugepage/enabled
-    echo never > /sys/kernel/mm/transparent_hugepage/defrag
-    ```
-    You can add this to `/etc/rc.local` to retain the setting after a reboot
-    -- Edit `./redis/redis.conf` to not save `*.rdb` or `*.aof` file
-   - make sure `appendonly` is `no` 
-   - remove or comment:
-	`save 900 1`
-	 `save 300 10`
-	 `save 60 10000`
-    - add `save ""`; otherwise redis will store the in-memory data to a `.rdb` file at certain interval or after exceeding certain memory limit
+    - Edit `/etc/sysctl.conf` and add `vm.overcommit_memory=1`
+    - Then reboot or run the command `sysctl vm.overcommit_memory=1` for this to take effect
+    - Disable transparent hugepage: 
+        ```sh
+        echo never > /sys/kernel/mm/transparent_hugepage/enabled
+        echo never > /sys/kernel/mm/transparent_hugepage/defrag
+        ```
+        You can add this to `/etc/rc.local` to retain the setting after a reboot
+    - Edit `./redis/redis.conf` to not save `*.rdb` or `*.aof` file
+        - make sure `appendonly` is `no` 
+        - remove or comment:
+	    `save 900 1`
+	    `save 300 10`
+	    `save 60 10000`
+        - add `save ""`; otherwise redis will store the in-memory data to a `.rdb` file at certain interval or after exceeding certain memory limit
 
 - Install Memtier workload
     ```sh
@@ -180,12 +183,12 @@
     
     Note: If you get `error: null argument where non-null required (argument 1)` while compiling zookeeper comment out all `fprintf` in `./PowerGraph/deps/zookeeper/src/zookeeper/src/c/src/zookeeper.c`
 - Run TunkRank
--- Download the `twitter-graph.zip` as mentioned [here](#spark)
-    ```sh
-    cgcreate -g memory:powergraph
-    echo 4721M > /sys/fs/cgroup/memory/powergraph/memory.limit_in_bytes
-    cgexec -g memory:powergraph ./PowerGraph/release/toolkits/graph_analytics/tunkrank --graph=./apps/workload/twitter-graph/edgein.txt --format=tsv --ncpus=2 --engine=asynchronous
-    ```
+    - Download the `twitter-graph.zip` as mentioned [here](#spark)
+        ```sh
+        cgcreate -g memory:powergraph
+        echo 4721M > /sys/fs/cgroup/memory/powergraph/memory.limit_in_bytes
+        cgexec -g memory:powergraph ./PowerGraph/release/toolkits/graph_analytics/tunkrank --graph=./apps/workload/twitter-graph/edgein.txt --format=tsv --ncpus=2 --engine=asynchronous
+        ```
 ## Turicreate
 - Install [TuriCreate](https://github.com/apple/turicreate)
     ```sh
@@ -212,7 +215,33 @@
 - Run `python image_classif_evaluate.py` with cgroup memory limitation (Takes ~15 minutes without memory limit)
 
 ## Cloudlab Configuration
-- Add 1TB Disk to the machine
+#### KVM Installation
+- To check whether the system supports virtualization
+    ```sh
+    # if the system supports virtualization this shoud print any value except 0
+    egrep -c '(vmx|svm)' /proc/cpuinfo
+    
+    # determine if your server is capable of running hardware accelerated KVM
+    sudo apt install -y cpu-checker
+    sudo kvm-ok
+    ```
+- To install KVM
+    ```sh
+    sudo apt update
+    sudo apt install -y qemu qemu-kvm libvirt-bin  bridge-utils  virt-manager
+    service libvirtd status
+    
+    #if libvirtd is not enabled
+    sudo service libvirtd start
+    sudo update-rc.d libvirtd enable
+    ```
+- To instantiate a KVM
+    ```sh
+    sudo virt-install  -n DB-Server  --description "<put some text>"  --os-type=Linux --os-variant=<linux version>  --ram=1096  --vcpus=1  --disk path=/var/lib/libvirt/images/image_name.img,bus=virtio,size=10  --network bridge:<bridge name, br0> --graphics none  --location <path to the image> --extra-args console=ttyS0
+    ```
+- Tutorial on setting up KVM on [CloudLab](https://wtao0221.github.io/2018/04/27/KVM-Virtual-Function-Configuration-on-CloudLab/), [general server](https://www.cyberciti.biz/faq/how-to-use-kvm-cloud-images-on-ubuntu-linux/), configuring SRI-OV for ConnectX-3 with KVM ([InfiniBand](https://community.mellanox.com/s/article/howto-configure-sr-iov-for-connectx-3-with-kvm--infiniband-x))
+#### Add 1TB Disk
+- To add 1TB disk to ClodLab Machines
     ```sh
     sudo mkdir /somedir
     sudo /usr/local/etc/emulab/mkextrafs.pl /somedir
@@ -223,7 +252,20 @@
     sudo sgdisk --zap /dev/sda
     sudo /usr/local/etc/emulab/mkextrafs.pl /somedir
     ```
-    
+#### Setup RAMDisk
+- To setup a RAMDisk 
+    ```sh
+    mkdir /mnt/ramdisk
+    mke2fs /dev/ram0
+    mount -t ext2 /dev/ram0 /mnt/ramdisk/
+    dd if=/dev/zero of=/mnt/ramdisk/sw bs=4096 count=1000000
+    mkswap /mnt/ramdisk/sw 1000000
+    chmod 600 /mnt/ramdisk/sw
+    sync
+    swapon -s
+    swapoff /dev/sda3 #replace /dev/sda3 by swapon -s output
+    swapon /mnt/ramdisk/sw
+    ```
 ## Miscellaneous
 #### Call Graph Latency Breakdown
 * Use [ftrace](https://jvns.ca/blog/2017/03/19/getting-started-with-ftrace/) to trace a function call graph ([documentation](https://www.kernel.org/doc/Documentation/trace/ftrace.txt))
