@@ -237,7 +237,33 @@
     ```
 - To instantiate a KVM
     ```sh
-    sudo virt-install  -n DB-Server  --description "<put some text>"  --os-type=Linux --os-variant=<linux version>  --ram=1096  --vcpus=1  --disk path=/var/lib/libvirt/images/image_name.img,bus=virtio,size=10  --network bridge:<bridge name, br0> --graphics none  --location <path to the image> --extra-args console=ttyS0
+    #configure the interface
+    sudo vim /etc/network/interfaces
+    #modify the file with
+        auto br0
+        iface br0 inet dhcp
+            bridge_ports eno1
+            bridge_stp off
+            bridge_fd 0
+            bridge_maxwait 0
+    #save and close the file and restart network
+    sudo service networking restart
+    
+    #install uvtool
+    sudo apt install -y uvtool
+    #get the bionic (18.04 LTS) image
+    uvt-simplestreams-libvirt --verbose sync --source http://cloud-images.ubuntu.com/daily release=bionic arch=amd64
+    #check whether it is added correctly
+    uvt-simplestreams-libvirt query
+    ssh-keygen
+    uvt-kvm create vm1 --memory 32768 --cpu 16 --disk 8 --bridge br0 --ssh-public-key-file /root/.ssh/id_rsa.pub #--packages PACKAGES1, PACKAGES2, .. --run-script-once RUN_SCRIPT_ONCE
+    
+    #to delete the VM
+    uvt-kvm destroy vm1
+    #to get the ip address of the VM
+    uvt-kvm ip vm1
+    #to ssh to that VM
+    uvt-kvm ssh vm1
     ```
 - Tutorial on setting up KVM on [CloudLab](https://wtao0221.github.io/2018/04/27/KVM-Virtual-Function-Configuration-on-CloudLab/), [general server](https://www.cyberciti.biz/faq/how-to-use-kvm-cloud-images-on-ubuntu-linux/), configuring SRI-OV for ConnectX-3 with KVM ([InfiniBand](https://community.mellanox.com/s/article/howto-configure-sr-iov-for-connectx-3-with-kvm--infiniband-x))
 #### Add 1TB Disk
