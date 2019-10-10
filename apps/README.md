@@ -25,9 +25,12 @@
     export PATH=$PATH:$JAVA_HOME/bin
     java -version
     ```
-- Clone the VoltDB [repo](https://github.com/hasan3050/voltdb_tpcc)
+- Clone the VoltDB [repo](https://github.com/VoltDB/voltdb)
     ```sh
-    git clone https://github.com/hasan3050/voltdb_tpcc.git
+    git clone https://github.com/VoltDB/voltdb.git
+    cp ./apps/workload/voltdb/*.java ./voltdb/tests/test_apps/tpcc/client/com/
+    cp ./apps/workload/voltdb/run.sh ./voltdb/tests/test_apps/tpcc/
+    cp ./apps/workload/voltdb/run_tpcc.sh ./voltdb
     ```
 - [Build VoltDB](https://github.com/VoltDB/voltdb/wiki/Building-VoltDB)
     ```sh
