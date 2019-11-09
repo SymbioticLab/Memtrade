@@ -3,6 +3,7 @@
     * [VoltDB](#voltdb)
     * [MemCached](#memcached)
     * [Redis](#redis)
+    * [RocksDB](#rocksdb)
     * [Spark](#spark)
     * [PowerGraph](#powergraph)
     * [TuriCreate](#turicreate) ([Graph Algorithms](#graph-algorithms), [Image Classification](#image-classifications))
@@ -13,6 +14,7 @@
     * [Setup Ramdisk](#setup-ramdisk)
 * [Miscellaneous](#miscellaneous)
     * [Call Graph Latency Breakdown](#call-graph-latency-breakdown)
+    * [Compile Linux from Source Code](#compile-linux-from-source-code)
 
 ## Workload
 ## Voltdb
@@ -146,6 +148,27 @@
     ```
     Here, `-x` changes run count; add `--out-file=FILE` to the command to specify output file 
 
+## RocksDB
+- Install RocksDB
+    ```sh
+    sudo apt-get install libgflags-dev libsnappy-dev zlib1g-dev libbz2-dev libzstd-dev # dependency packages, libzstd-dev is available for xenial or later distributions
+    git clone https://github.com/facebook/rocksdb.git
+    cd rocksdb/
+    make all -j32
+    ```
+- Run [Bulk Load](https://github.com/facebook/rocksdb/wiki/Performance-Benchmarks#test-1-bulk-load-of-keys-in-random-order) benchmark
+    - [Add 1TB Disk](#add-1tb-disk)
+    ```sh
+    export DB_DIR=/somedir/db # mkdir if /somedir/db does not exist
+    export WAL_DIR=/somedir/wal
+    export TEMP=/somedir/tmp
+    export OUTPUT_DIR=/somedir/output
+    
+    ./tools/benchmark.sh bulkload
+    ```
+- Run [Read While Writing](https://github.com/facebook/rocksdb/wiki/Performance-Benchmarks#test-5-multi-threaded-read-and-single-threaded-write) benchmark
+    - Run Bulk Load benchmark ti populate the database
+    - `NUM_KEYS=10000000 NUM_THREADS=32 tools/benchmark.sh readwhilewriting` to run 10 Million reads with 32 concurrent threads
 ## Spark
 - Install Spark (to build Spark, you need JDK8; see how to install OpenJDK [here](#voltdb))
     ```sh
@@ -200,6 +223,16 @@
     virtualenv venv
     source ~/venv/bin/activate
     pip install -U turicreate
+    ```
+## Metis 
+- Install [Metis](https://github.com/ydmao/Metis)
+- Build and run linear regression
+    ```sh
+    cd Metis/data_tool
+    mkdir data
+    chmod +x data-gen.sh 
+    ./data-gen.sh
+    cd .. & obj/linear_regression ./data_tool/data/lr_4GB.txt
     ```
 #### Graph Algorithms
 - To run graph analytics on TuriCreate
@@ -315,3 +348,37 @@
     python ./apps/scripts/parse_ftrace.py -file <path/to/ftrace/record> -func <function_to_parse> -count <number_of_events>
     ```
     Default function is `__do_page_fault()` and CDF is generated out of first 100000 events.
+    
+#### Compile Linux from Source Code
+* Install package dependencies 
+    ```sh
+    apt-get install -y git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache  libelf-dev libqt4-dev pkg-config ncurses-dev
+   
+    #if gcc/g++ has older versions, update them to gcc-7
+    apt-get install -y software-properties-common
+    add-apt-repository ppa:ubuntu-toolchain-r/test
+    apt update
+    apt install g++-7 -y
+    
+    #Set it up so the symbolic links gcc, g++ point to the newer version:
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 60
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-7 60
+    update-alternatives --config gcc
+    gcc --version
+    g++ --version
+    ```
+* Now get the source code and compile
+    ```sh
+    wget -c https://mirrors.edge.kernel.org/pub/linux/kernel/v4.x/linux-4.10.1.tar.gz # replace the URL for different versions of linux
+    tar -xzvf linux-4.10.1.tar.gz
+    
+    make mrproper # clean previous makes
+    cp /boot/config-`uname -r` .config # if the .config is not there. This will copy the existing linux's config file, open the .config file to make necessary config change.
+    #set CONFIG_IDLE_PAGE_TRACKING=y for enabling idle page trancking
+    #set CONFIG_MLX_PLATFORM=y for enabling MLNX platform drivers
+    yes '' | make oldconfig # localmodconfig creates a config based on current config and loaded modules
+    make -j32 # -jN for parallelising the make with N cores 
+    make headers_install
+    make modules_install
+    make install && reboot
+    ```
