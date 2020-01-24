@@ -8,6 +8,8 @@
     * [PowerGraph](#powergraph)
     * [TuriCreate](#turicreate) ([Graph Algorithms](#graph-algorithms), [Image Classification](#image-classifications))
     * [Metis](#metis)
+    * [PARSEC](#parsec)
+    * [CloudSuite](#cloudsuite)
 * [CloudLab Configuration](#cloudlab-configuration)
     * [KVM Installation](#kvm-installation)
     * [Add 1TB Disk](#add-1tb-disk) 
@@ -20,11 +22,11 @@
 
 | Use Case | Application | 
 | ------------- |:-------------:|
-| Data Storage  | RocksDB, Redis on Memtier, MemCahed on FB, VoltDB on TPC-C| 
-| Graph Algorithms  | TunkRank over PowerGraph, PageRank, Connected Component, Label Propagation, Graph Coloring over TuriCreate |  
-| Machine Learning | Image Classification over TuriCreate, Movie Recommendation over Spark |  
-| Parallel Programming | PARSEC benchmark with x264 and canneal benchmark |
-| Web Service | CloudSuite Olio (social-events), media streaming |
+| Data Storage  | [RocksDB](#rocksdb); [Redis](#redis) on Memtier; [MemCahed](#memcached) on FB; [VoltDB](#voltdb) on TPC-C | 
+| Graph Algorithms  | TunkRank over [PowerGraph](#powergraph); PageRank, Connected Component, Label Propagation, Graph Coloring over [TuriCreate](#turicreate) |  
+| Machine Learning | [Image Classification](#image-classifications) over TuriCreate, [Movie Recommendation](#movie-recommendation) over Spark |  
+| Parallel Programming | [PARSEC](#parsec) with x264 and canneal benchmark |
+| Web Service | [CloudSuite](#cloudsuite) Olio (social-events), media streaming |
 
 ## Voltdb
 - To build VoltDB, you need OpenJDK, so [install](https://stackoverflow.com/questions/14788345/how-to-install-the-jdk-on-ubuntu-linux) it if you don?t have it.
@@ -204,6 +206,9 @@
     rm -r /home/ubuntu/out_spark
     cgexec -g memory:graphx bin/spark-submit run-example --master local[32] --driver-memory 12G --conf "spark.network.timeout=1200" SparkPageRank 10
     ```
+    
+    #### Movie Recommendation
+    I did not test and run this workload yet. The idea is to run matrix factorization based recommender over the MovieLens dataset. We can follow this [repo](https://github.com/KevinLiao159/MyDataSciencePortfolio/tree/master/movie_recommender) for this workload.
 ## Powergraph
 - Install PowerGraph
     ```sh
@@ -224,6 +229,7 @@
         echo 4721M > /sys/fs/cgroup/memory/powergraph/memory.limit_in_bytes
         cgexec -g memory:powergraph ./PowerGraph/release/toolkits/graph_analytics/tunkrank --graph=./apps/workload/twitter-graph/edgein.txt --format=tsv --ncpus=2 --engine=asynchronous
         ```
+
 ## Turicreate
 - Install [TuriCreate](https://github.com/apple/turicreate)
     ```sh
@@ -233,6 +239,21 @@
     source ~/venv/bin/activate
     pip install -U turicreate
     ```
+    #### Graph Algorithms
+    - To run graph analytics on TuriCreate
+        ```sh
+        cd apps/workload/turicreate
+        cgexec -g memory:graph_analytics
+        echo 2G > /sys/fs/cgroup/memory/graph_analytics/memory.limit_in_bytes
+        cgexec -g memory:graph_analytics python graph_analytics.py -g <twitter/wiki> -a <pagerank/connectedcomp/labelprop/graphcol> -t 32
+        ```
+    #### Image Classification
+    - Download and extract dataset from [here](https://www.microsoft.com/en-us/download/details.aspx?id=54765) (large dataset)
+    - Open image_classif_create.py and change home to your dataset 
+    - Run `python image_classif_create.py` one time only to create the train and test data
+    - Run `python image_classif_model.py` (Takes a few hours)
+    - Run `python image_classif_predict.py` with cgroup memory limitation (Takes ~15 minutes without memory limit)
+    - Run `python image_classif_evaluate.py` with cgroup memory limitation (Takes ~15 minutes without memory limit)
 ## Metis 
 - Install [Metis](https://github.com/ydmao/Metis)
 - Build and run linear regression
@@ -243,21 +264,12 @@
     ./data-gen.sh
     cd .. & obj/linear_regression ./data_tool/data/lr_4GB.txt
     ```
-## Graph Algorithms
-- To run graph analytics on TuriCreate
-    ```sh
-    cd apps/workload/turicreate
-    cgexec -g memory:graph_analytics
-    echo 2G > /sys/fs/cgroup/memory/graph_analytics/memory.limit_in_bytes
-    cgexec -g memory:graph_analytics python graph_analytics.py -g <twitter/wiki> -a <pagerank/connectedcomp/labelprop/graphcol> -t 32
-    ```
-## Image Classification
-- Download and extract dataset from [here](https://www.microsoft.com/en-us/download/details.aspx?id=54765) (large dataset)
-- Open image_classif_create.py and change home to your dataset 
-- Run `python image_classif_create.py` one time only to create the train and test data
-- Run `python image_classif_model.py` (Takes a few hours)
-- Run `python image_classif_predict.py` with cgroup memory limitation (Takes ~15 minutes without memory limit)
-- Run `python image_classif_evaluate.py` with cgroup memory limitation (Takes ~15 minutes without memory limit)
+## PARSEC
+ PARSEC is a collection of parallel programs which are used for performance studies of multiprocessor machines. I did not run this benchmark yet. We can follow this [repo](https://github.com/bamos/parsec-benchmark) to run PARSEC benchmarks.
+## CloudSuite
+I did not configure and run this workload yet. We can follow the official documentation of [web-serving](https://github.com/parsa-epfl/cloudsuite/blob/master/docs/benchmarks/web-serving.md) and [media-streaming](https://github.com/parsa-epfl/cloudsuite/blob/master/docs/benchmarks/media-streaming.md) to evaluate social media and video streaming type services, respectively. 
+
+This [repo](https://github.com/chetui/CloudSuiteTutorial/tree/master/web_serving) can also be helpful if the official documentation (docer-based deployment) doesn't work.
 
 ## Cloudlab Configuration
 #### KVM Installation
