@@ -17,6 +17,15 @@
     * [Compile Linux from Source Code](#compile-linux-from-source-code)
 
 ## Workload
+
+| Use Case | Application | 
+| ------------- |:-------------:|
+| Data Storage  | RocksDB, Redis on Memtier, MemCahed on FB, VoltDB on TPC-C| 
+| Graph Algorithms  | TunkRank over PowerGraph, PageRank, Connected Component, Label Propagation, Graph Coloring over TuriCreate |  
+| Machine Learning | Image Classification over TuriCreate, Movie Recommendation over Spark |  
+| Parallel Programming | PARSEC benchmark with x264 and canneal benchmark |
+| Web Service | CloudSuite Olio (social-events), media streaming |
+
 ## Voltdb
 - To build VoltDB, you need OpenJDK, so [install](https://stackoverflow.com/questions/14788345/how-to-install-the-jdk-on-ubuntu-linux) it if you don?t have it.
     ```sh
@@ -234,7 +243,7 @@
     ./data-gen.sh
     cd .. & obj/linear_regression ./data_tool/data/lr_4GB.txt
     ```
-#### Graph Algorithms
+## Graph Algorithms
 - To run graph analytics on TuriCreate
     ```sh
     cd apps/workload/turicreate
@@ -242,7 +251,7 @@
     echo 2G > /sys/fs/cgroup/memory/graph_analytics/memory.limit_in_bytes
     cgexec -g memory:graph_analytics python graph_analytics.py -g <twitter/wiki> -a <pagerank/connectedcomp/labelprop/graphcol> -t 32
     ```
-#### Image Classification
+## Image Classification
 - Download and extract dataset from [here](https://www.microsoft.com/en-us/download/details.aspx?id=54765) (large dataset)
 - Open image_classif_create.py and change home to your dataset 
 - Run `python image_classif_create.py` one time only to create the train and test data
