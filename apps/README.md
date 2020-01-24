@@ -22,11 +22,11 @@
 
 | Use Case | Application | 
 | ------------- |:-------------:|
-| Data Storage  | [RocksDB](#rocksdb); [Redis](#redis) on Memtier; [MemCahed](#memcached) on FB; [VoltDB](#voltdb) on TPC-C | 
-| Graph Algorithms  | TunkRank over [PowerGraph](#powergraph); PageRank, Connected Component, Label Propagation, Graph Coloring over [TuriCreate](#turicreate) |  
-| Machine Learning | [Image Classification](#image-classifications) over TuriCreate, [Movie Recommendation](#movie-recommendation) over Spark |  
+| Data Storage  | [RocksDB](#rocksdb); Memtier on [Redis](#redis); FB workload on [MemCahed](#memcached); TPC-C on [VoltDB](#voltdb) | 
+| Graph Algorithms  | TunkRank on [PowerGraph](#powergraph); PageRank, Connected Component, Label Propagation, Graph Coloring on [TuriCreate](#turicreate) |  
+| Machine Learning | [Image Classification](#image-classifications) on TuriCreate; [Movie Recommendation](#movie-recommendation) on Spark |  
 | Parallel Programming | [PARSEC](#parsec) with x264 and canneal benchmark |
-| Web Service | [CloudSuite](#cloudsuite) Olio (social-events), media streaming |
+| Web Service | Olio (social-events), media streaming on [CloudSuite](#cloudsuite) |
 
 ## Voltdb
 - To build VoltDB, you need OpenJDK, so [install](https://stackoverflow.com/questions/14788345/how-to-install-the-jdk-on-ubuntu-linux) it if you don?t have it.
