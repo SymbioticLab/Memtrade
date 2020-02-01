@@ -11,7 +11,7 @@
     * [PARSEC](#parsec)
     * [CloudSuite](#cloudsuite)
 * [CloudLab Configuration](#cloudlab-configuration)
-    * [KVM Installation](#kvm-installation)
+    * [KVM Management](#kvm-management)
     * [Add 1TB Disk](#add-1tb-disk) 
     * [Setup Ramdisk](#setup-ramdisk)
 * [Miscellaneous](#miscellaneous)
@@ -25,7 +25,7 @@
 | Data Storage  | [RocksDB](#rocksdb); Memtier on [Redis](#redis); FB workload on [MemCahed](#memcached); TPC-C on [VoltDB](#voltdb) | 
 | Graph Algorithms  | TunkRank on [PowerGraph](#powergraph); PageRank, Connected Component, Label Propagation, Graph Coloring on [TuriCreate](#turicreate) |  
 | Machine Learning | [Image Classification](#image-classifications) on TuriCreate; [Movie Recommendation](#movie-recommendation) on Spark |  
-| Parallel Programming | [PARSEC](#parsec) with x264 and canneal benchmark |
+| Parallel Programming | [PARSEC](#parsec) with x264 and canneal benchmark; [Metis](#metis) with Linear Regression |
 | Web Service | Olio (social-events), media streaming on [CloudSuite](#cloudsuite) |
 
 ## Voltdb
@@ -170,10 +170,10 @@
 - Run [Bulk Load](https://github.com/facebook/rocksdb/wiki/Performance-Benchmarks#test-1-bulk-load-of-keys-in-random-order) benchmark
     - [Add 1TB Disk](#add-1tb-disk)
     ```sh
-    export DB_DIR=/somedir/db # mkdir if /somedir/db does not exist
-    export WAL_DIR=/somedir/wal
-    export TEMP=/somedir/tmp
-    export OUTPUT_DIR=/somedir/output
+    export DB_DIR=/newdir/db # mkdir if /newdir/db does not exist
+    export WAL_DIR=/newdir/wal
+    export TEMP=/newdir/tmp
+    export OUTPUT_DIR=/newdir/output
     
     ./tools/benchmark.sh bulkload
     ```
@@ -223,12 +223,12 @@
     
     Note: If you get `error: null argument where non-null required (argument 1)` while compiling zookeeper comment out all `fprintf` in `./PowerGraph/deps/zookeeper/src/zookeeper/src/c/src/zookeeper.c`
 - Run TunkRank
-    - Download the `twitter-graph.zip` as mentioned [here](#spark)
-        ```sh
-        cgcreate -g memory:powergraph
-        echo 4721M > /sys/fs/cgroup/memory/powergraph/memory.limit_in_bytes
-        cgexec -g memory:powergraph ./PowerGraph/release/toolkits/graph_analytics/tunkrank --graph=./apps/workload/twitter-graph/edgein.txt --format=tsv --ncpus=2 --engine=asynchronous
-        ```
+    Download the `twitter-graph.zip` as mentioned [here](#spark)
+    ```sh
+    cgcreate -g memory:powergraph
+    echo 4721M > /sys/fs/cgroup/memory/powergraph/memory.limit_in_bytes
+    cgexec -g memory:powergraph ./PowerGraph/release/toolkits/graph_analytics/tunkrank --graph=./apps/workload/twitter-graph/edgein.txt --format=tsv --ncpus=2 --engine=asynchronous
+    ```
 
 ## Turicreate
 - Install [TuriCreate](https://github.com/apple/turicreate)
@@ -240,13 +240,13 @@
     pip install -U turicreate
     ```
     #### Graph Algorithms
-    - To run graph analytics on TuriCreate
-        ```sh
-        cd apps/workload/turicreate
-        cgexec -g memory:graph_analytics
-        echo 2G > /sys/fs/cgroup/memory/graph_analytics/memory.limit_in_bytes
-        cgexec -g memory:graph_analytics python graph_analytics.py -g <twitter/wiki> -a <pagerank/connectedcomp/labelprop/graphcol> -t 32
-        ```
+    To run graph analytics on TuriCreate:
+    ```sh
+    cd apps/workload/turicreate
+    cgexec -g memory:graph_analytics
+    echo 2G > /sys/fs/cgroup/memory/graph_analytics/memory.limit_in_bytes
+    cgexec -g memory:graph_analytics python graph_analytics.py -g <twitter/wiki> -a <pagerank/connectedcomp/labelprop/graphcol> -t 32
+    ```
     #### Image Classification
     - Download and extract dataset from [here](https://www.microsoft.com/en-us/download/details.aspx?id=54765) (large dataset)
     - Open image_classif_create.py and change home to your dataset 
@@ -272,7 +272,7 @@ I did not configure and run this workload yet. We can follow the official docume
 This [repo](https://github.com/chetui/CloudSuiteTutorial/tree/master/web_serving) can also be helpful if the official documentation (docer-based deployment) doesn't work.
 
 ## Cloudlab Configuration
-#### KVM Installation
+#### KVM Management
 - To check whether the system supports virtualization
     ```sh
     # if the system supports virtualization this shoud print any value except 0
@@ -285,55 +285,92 @@ This [repo](https://github.com/chetui/CloudSuiteTutorial/tree/master/web_serving
 - To install KVM
     ```sh
     sudo apt update
-    sudo apt install -y qemu qemu-kvm libvirt-bin  bridge-utils  virt-manager
+    sudo apt install -y uvtool qemu-kvm libvirt-bin ubuntu-vm-builder bridge-utils virt-manager libosinfo-bin libguestfs-tools virt-top
     service libvirtd status
     
     #if libvirtd is not enabled
     sudo service libvirtd start
     sudo update-rc.d libvirtd enable
+    
+    # add your current user to group libvirtd
+    sudo adduser `id -un` libvirtd
     ```
 - To instantiate a KVM
     ```sh
-    #configure the interface
-    sudo vim /etc/network/interfaces
-    #modify the file with
-        auto br0
-        iface br0 inet dhcp
-            bridge_ports eno1
-            bridge_stp off
-            bridge_fd 0
-            bridge_maxwait 0
-    #save and close the file and restart network
-    sudo service networking restart
-    
-    #install uvtool
-    sudo apt install -y uvtool
-    #get the bionic (18.04 LTS) image
+    #sync to vm image, get the bionic (18.04 LTS) image
     uvt-simplestreams-libvirt --verbose sync --source http://cloud-images.ubuntu.com/daily release=bionic arch=amd64
+    
     #check whether it is added correctly
     uvt-simplestreams-libvirt query
     ssh-keygen
-    uvt-kvm create vm1 --memory 32768 --cpu 16 --disk 8 --bridge br0 --ssh-public-key-file /root/.ssh/id_rsa.pub #--packages PACKAGES1, PACKAGES2, .. --run-script-once RUN_SCRIPT_ONCE
+    uvt-kvm create vm1 --memory 32768 --cpu 16 --disk 20 --ssh-public-key-file /root/.ssh/id_rsa.pub --packages gcc,g++,python,dstat,git,build-essential,kernel-package,fakeroot,libncurses5-dev,libssl-dev,ccache,libelf-dev,libqt4-dev,pkg-config,ncurses-dev,autoconf,automake,libpcre3-dev,libevent-dev,zlib1g-dev,vim #--bridge br0 --run-script-once RUN_SCRIPT_ONCE
     
-    #to delete the VM
-    uvt-kvm destroy vm1
+    #wait until the vm is ready to use
+    uvt-kvm wait vm1
     #to get the ip address of the VM
     uvt-kvm ip vm1
     #to ssh to that VM
     uvt-kvm ssh vm1
+
+    #to see the vm status from host
+    virsh list 
+    #to shutdown the vm from host
+    virsh shutdown vm1
+    #restart the vm again from host
+    virsh start vm1
+    #to delete the VM
+    virsh destroy vm1
+    #to destroy the vm with all its storage 
+    virsh undefine vm1 --remove-all-storage 
+    ```
+- To add a swap device to the KVM
+    ```sh
+    # create a disk 
+    qemu-img create -f raw vm1_swap.img 20G
+    #if vdc is already mounted, use vdb or vdd  at target
+    virsh attach-disk vm1 --source /path/to/image/vm1_swap.img --target vdc --persistent
+    
+    #Inside the VM
+    reboot
+    #use 'gpt' partition and filesystem type '82 (linux/linux swap)'
+    cfdisk /dev/vdc
+    mkswap /dev/vdc1
+    swapon /dev/vdc1
+    mkdir /mnt/new-disk
+    mount /dev/vdc1 /mnt/new-disk
+
+    #Add the following to '/etc/fstab' for reboot persistence
+    /dev/vdb1   swap            swap    defaults    0 0
+    ```
+    
+- If you want to bridge a network, configure the interface
+    ```sh
+    sudo vim /etc/network/interfaces
+    
+    #modify the file with
+    auto br0
+    iface br0 inet dhcp
+        bridge_ports eno1
+        bridge_stp off
+        bridge_fd 0
+        bridge_maxwait 0
+    #save and close the file and restart network
+    sudo service networking restart
+    
+    #During KVM create, add '--bridge br0' in the 'uvt-kvm create' command
     ```
 - Tutorial on setting up KVM on [CloudLab](https://wtao0221.github.io/2018/04/27/KVM-Virtual-Function-Configuration-on-CloudLab/), [general server](https://www.cyberciti.biz/faq/how-to-use-kvm-cloud-images-on-ubuntu-linux/), configuring SRI-OV for ConnectX-3 with KVM ([InfiniBand](https://community.mellanox.com/s/article/howto-configure-sr-iov-for-connectx-3-with-kvm--infiniband-x))
 #### Add 1TB Disk
 - To add 1TB disk to ClodLab Machines
     ```sh
-    sudo mkdir /somedir
-    sudo /usr/local/etc/emulab/mkextrafs.pl /somedir
+    sudo mkdir /newdir
+    sudo /usr/local/etc/emulab/mkextrafs.pl /newdir
     ```
     If you get a strange GPT error, do this:
     ```sh
     sudo apt-get install gdisk
     sudo sgdisk --zap /dev/sda
-    sudo /usr/local/etc/emulab/mkextrafs.pl /somedir
+    sudo /usr/local/etc/emulab/mkextrafs.pl /newdir
     ```
 #### Setup RAMDisk
 - To setup a RAMDisk 
