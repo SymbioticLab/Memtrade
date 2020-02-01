@@ -208,7 +208,15 @@
     ```
     
     #### Movie Recommendation
-    I did not test and run this workload yet. The idea is to run matrix factorization based recommender over the MovieLens dataset. We can follow this [repo](https://github.com/KevinLiao159/MyDataSciencePortfolio/tree/master/movie_recommender) for this workload.
+    The workload is a ML application (Alternating Least Square Matrix Factorization) over the [MovieLens full dataset](https://grouplens.org/datasets/movielens/latest/) (27M ratings, 58K movies, 280K users)
+    ```sh
+    #get the dataset
+    wget http://files.grouplens.org/datasets/movielens/ml-latest.zip
+    unzip ml-latest.zip
+    
+    spark-submit --master local[16] --driver-memory 12G --executor-memory 12G apps/workload/spark/als_recommender.py --path /paath/to/ml-latest --movie_name "Iron Man" --top_n 100
+    ```
+    The ALS MF code was taken from this [repo](https://github.com/KevinLiao159/MyDataSciencePortfolio/tree/master/movie_recommender).
 ## Powergraph
 - Install PowerGraph
     ```sh
@@ -303,7 +311,7 @@ This [repo](https://github.com/chetui/CloudSuiteTutorial/tree/master/web_serving
     #check whether it is added correctly
     uvt-simplestreams-libvirt query
     ssh-keygen
-    uvt-kvm create vm1 --memory 32768 --cpu 16 --disk 20 --ssh-public-key-file /root/.ssh/id_rsa.pub --packages gcc,g++,python,dstat,git,build-essential,kernel-package,fakeroot,libncurses5-dev,libssl-dev,ccache,libelf-dev,libqt4-dev,pkg-config,ncurses-dev,autoconf,automake,libpcre3-dev,libevent-dev,zlib1g-dev,vim #--bridge br0 --run-script-once RUN_SCRIPT_ONCE
+    uvt-kvm create vm1 --memory 32768 --cpu 16 --disk 20 --ssh-public-key-file /root/.ssh/id_rsa.pub --packages gcc,g++,python,dstat,git,build-essential,kernel-package,fakeroot,libncurses5-dev,libssl-dev,ccache,libelf-dev,libqt4-dev,pkg-config,ncurses-dev,autoconf,automake,libpcre3-dev,libevent-dev,zlib1g-dev,vim,python-pip,openjdk-8-jdk,ant-optional,cmake #--bridge br0 --run-script-once RUN_SCRIPT_ONCE
     
     #wait until the vm is ready to use
     uvt-kvm wait vm1
