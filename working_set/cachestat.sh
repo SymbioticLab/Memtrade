@@ -137,7 +137,6 @@ while (( !quit && (!opt_duration || secs < duration) )); do
 	# match meminfo stats:
 	$1 == "Buffers:" && $3 == "kB" { buffers_mb = $2 / 1024 }
 	$1 == "Cached:" && $3 == "kB" { cached_mb = $2 / 1024 }
-	caches = $2 / 4
 	# identify and save trace counts:
 	$2 ~ /[0-9]/ && $3 != "kB" { a[$1] += $2 }
 	END {
@@ -157,7 +156,7 @@ while (( !quit && (!opt_duration || secs < duration) )); do
 		printf "%8d %8d %8d %7.1f%% %12.0f %10.0f", hits, misses, mbd,
 		    ratio, buffers_mb, cached_mb
 		if (debug)
-			printf "  %d %d %d %d %d", mpa, mbd, apcl, apd, prev, caches
+			printf "  %d %d %d %d %d", mpa, mbd, apcl, apd, prev, cached_mb/4
 		printf "\n"
 	}'
 done
