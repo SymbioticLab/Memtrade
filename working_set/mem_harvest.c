@@ -168,7 +168,7 @@ long get_val ( char* buffer, char* comp ) {
 int exec_cmd( char* cmd ) {
 	FILE* _pipe = popen(cmd, "r");
 	char buffer[1024];
-       	int buffer_size = 1024, d, r;
+    int buffer_size = 1024, d, r;
 	long ops, max_ops = 0, epoch, run;
 
 	if(_pipe == NULL) {
