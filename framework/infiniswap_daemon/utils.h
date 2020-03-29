@@ -15,15 +15,16 @@
 
 #define COORDINATOR_IP "192.168.0.1"
 #define COORDINATOR_PORT 9400
+#define RDMA_PRODUCER_IP "192.168.0.2"
+#define RDMA_PRODUCER_PORT 9402
 #define RDMA_PRODUCER_NSLABS     524288 // 819200 //1219200
 #define RDMA_PRODUCER_SLAB_SIZE  131072 //(1ul << CLUSTERSHIFT) // 131072
 
 #define PIN_EVICTION_HANDLER_CORE    8
-#define PIN_SERVER_CORE              7
-#define PIN_SERVER_POLLER_CORE       6
+#define PIN_PRODUCER_CORE              7
+#define PIN_PRODUCER_POLLER_CORE       6
 #define PIN_COORDINATOR_CORE         4
-#define PIN_RACK_CNTRL_POLLER_CORE   3
-#endif
+#define PIN_CC_POLLER_CORE   3
 
 /********************************************
 ************************************************/

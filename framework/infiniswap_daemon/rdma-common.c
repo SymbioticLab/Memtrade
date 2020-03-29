@@ -12,9 +12,7 @@ static void build_context(struct ibv_context *verbs);
 static void build_qp_attr(struct ibv_qp_init_attr *qp_attr);
 static void on_completion(struct ibv_wc *);
 static void * poll_cq(void *);
-static void post_receives(struct connection *conn);
 static void register_memory(struct connection *conn);
-static void send_message(struct connection *conn);
 
 struct rdma_session session;
 

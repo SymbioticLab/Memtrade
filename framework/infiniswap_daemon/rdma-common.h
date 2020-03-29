@@ -75,6 +75,18 @@ struct message {
     MSG_DONE_SLAB_ADD,
     NUM_MSG_TYPE
   } type;
+
+  struct {
+    struct ibv_mr mr;
+    void *addr;
+    size_t size;
+    char ip[200];
+    int port;
+    int id;
+    unsigned int rdmakey;
+    int nslabs;
+    //void *memaddr;
+  } data;
 };
 
 struct context {
@@ -103,7 +115,8 @@ struct connection {
 
   struct rdma_cm_id *id;
   struct ibv_qp *qp;
-
+  
+  void *peer;
   int connected;
 
   struct ibv_mr *recv_mr;
@@ -114,6 +127,14 @@ struct connection {
 
   struct message *recv_msg;
   struct message *send_msg;
+
+  struct ibv_mr *rdma_local_mr;
+  char *rdma_local_region;
+
+  unsigned long local_addr;
+  unsigned long remote_addr;
+  unsigned int lkey;
+  unsigned int rkey;
 
   char *rdma_remote_region;
   //struct rdma_remote_mem rdma_remote;

@@ -11,7 +11,7 @@ all: ${APPS}
 infiniswap-daemon: rdma-common.o infiniswap-daemon.o
 	${LD} -o $@ $^ ${LDLIBS}
 
-central-coordinator: rdma-common.o central-coordinator.o
+coordinator: coordinator.o
 	${LD} -o $@ $^ ${LDLIBS}
 
 clean:
