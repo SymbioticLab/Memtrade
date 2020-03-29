@@ -21,7 +21,7 @@
 #include <infiniband/verbs.h>
 
 #include "utils.h"
-#include "rdma-common.h"
+#include "rcommon.h"
 
 static int on_connect_request(struct rdma_cm_id *id);
 static int on_connection(struct rdma_cm_id *id);
@@ -45,7 +45,7 @@ struct {
     struct producer_t *rrs;
 } globals;
 
-// TODO: are ip+port duplicated? see globals.coord_ip+rcport
+// TODO: are ip+port duplicated? see globals.coord_ip+coord_port
 struct coordinator_conn_t {
     char ip[200];
     int port;
@@ -468,7 +468,7 @@ static void producer_create(struct producer_t *rrs) {
     pr_info("listening on port %d.", port);
     pr_info("slab size %ld.", globals.cluster_size);
 
-    connect2coordinator(globals.coord_ip, globals.rcport);
+    connect2coordinator(globals.coord_ip, globals.coord_port);
 }
 
 static void producer_destroy(struct producer_t *rrs) {
@@ -529,7 +529,7 @@ int main(int argc, char **argv) {
     strcpy(globals.producer, RDMA_PRODUCER_IP);
     globals.port = RDMA_PRODUCER_PORT;
     strcpy(globals.coord_ip, COORDINATOR_IP);
-    globals.rcport = COORDINATOR_PORT;
+    globals.coord_port = COORDINATOR_PORT;
     globals.cluster_size = RDMA_PRODUCER_NSLABS;
     while ((opt = getopt(argc, argv, "hs:p:c:r:n:")) != -1) {
         switch (opt) {
@@ -546,7 +546,7 @@ int main(int argc, char **argv) {
             strcpy(globals.coord_ip, optarg);
             break;
         case 'r':
-            globals.rcport = atol(optarg);
+            globals.coord_port = atol(optarg);
             break;
         case 'n':
             globals.cluster_size = atoi(optarg);

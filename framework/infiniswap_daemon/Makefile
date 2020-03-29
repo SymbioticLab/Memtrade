@@ -4,16 +4,27 @@ CFLAGS  := -Wall -Werror -g
 LD      := gcc
 LDLIBS  := ${LDLIBS} -lrdmacm -libverbs -lpthread
 
-APPS    := infiniswap-daemon central-coordinator
+APPS    := coordinator producer
 
 all: ${APPS}
 
-infiniswap-daemon: rdma-common.o infiniswap-daemon.o
-	${LD} -o $@ $^ ${LDLIBS}
+# coordinator: coordinator.o
+# 	${LD} -o $@ $^ ${LDLIBS}
 
-coordinator: coordinator.o
-	${LD} -o $@ $^ ${LDLIBS}
+# producer: producer.o
+# 	${LD} -o $@ $^ ${LDLIBS}
+
+coordinator: rcommon
+	$(LD) $(CFLAGS) -c ./coordinator.c
+	$(LD) $(LDFLAGS) ./utils.o ./rcommon.o ./coordinator.o -o coordinator  ${LDLIBS}
+
+producer: rcommon
+	$(LD) $(CFLAGS) -c ./producer.c 
+	$(LD) $(LDFLAGS) ./utils.o ./rcommon.o ./producer.o -o producer  ${LDLIBS}
+
+rcommon:
+	$(LD) $(CFLAGS) -c ./utils.c ./rcommon.c
 
 clean:
-	rm -f *.o ${APPS}
+	rm -f coordinator producer *.o ${APPS}
 
