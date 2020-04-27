@@ -152,17 +152,17 @@ We show how to run the memory harvester with YCSB-Redis as the application.
 	#cgexec -g memory:redis ./redis/src/redis-server ./redis/redis.conf
 	```
 
-8. YCSB load data 
+5. YCSB load data 
 	```bash
-cd ../YCSB
-./bin/ycsb load redis -s -P workloads/[workload name] -p "redis.host=127.0.0.1" -p "redis.port=6379"
+	cd ../YCSB
+	./bin/ycsb load redis -s -P workloads/[workload name] -p "redis.host=127.0.0.1" -p "redis.port=6379"
 	#./bin/ycsb load redis -s -P workloads/workloada -p "redis.host=127.0.0.1" -p "redis.port=6379"
-  ```
-   Run workload
-   ```bash
+	```
+	Run workload
+	```bash
 	./bin/ycsb run redis -s -P workloads/[workload name] -p "redis.host=127.0.0.1" -p "redis.port=6379" -p "status.interval=1"
 	#./bin/ycsb run redis -s -P workloads/workloada -p "redis.host=127.0.0.1" -p "redis.port=6379" -p "status.interval=1"
-	 ```
+	```
 	
 	Optional run two workloads one after another:
 	
@@ -171,37 +171,37 @@ cd ../YCSB
 	#./bin/ycsb run redis -s -P workloads/workload_oliver_th -p "redis.host=127.0.0.1" -p "redis.port=6379" -p "status.interval=1" && ./bin/ycsb run redis -s -P workloads/workload_oliver_bh -p "redis.host=127.0.0.1" -p "redis.port=6379" -p "status.interval=1"
 	```
 	
-9. Run control loop (cmanager, cmanager_latency, or rcmanager):
+6. Run control loop (cmanager, cmanager_latency, or rcmanager):
 
-   ```bash
-   # run cmanager
+	```bash
+	# run cmanager
    
-   #sudo <cgroup name> <performance file path> <initial cgroup size (MB)> <logging file path> <tswap stat path (optional)>
+	#sudo <cgroup name> <performance file path> <initial cgroup size (MB)> <logging file path> <tswap stat path (optional)>
    
-   sudo ./cmanager redis /tmp/ycsb 9000 /tmp/cman_ycsb /sys/kernel/tswap/tswap_stat
+	sudo ./cmanager redis /tmp/ycsb 9000 /tmp/cman_ycsb /sys/kernel/tswap/tswap_stat
    
-   # run cmanager_latency
+	# run cmanager_latency
    
-   # usage: <cgroup name> <latency file path> <initial cgroup size (MB)> <logging file path> <tswap stat path (optional)>
+	# usage: <cgroup name> <latency file path> <initial cgroup size (MB)> <logging file path> <tswap stat path (optional)>
    
-   sudo ./cmanager redis /tmp/ycsb_latency 9000 /tmp/cman_ycsb /sys/kernel/tswap/tswap_stat
+	sudo ./cmanager redis /tmp/ycsb_latency 9000 /tmp/cman_ycsb /sys/kernel/tswap/tswap_stat
    
-   # run rcmanager
+	# run rcmanager
    
-   # usage: <cgroup name> <promotion rate file path> <disk promotion rate file path> <initial cgroup size (MB)> <logging file path> <tswap stat path> <performance file path (optional)>
+	# usage: <cgroup name> <promotion rate file path> <disk promotion rate file path> <initial cgroup size (MB)> <logging file path> <tswap stat path> <performance file path (optional)>
    
-   sudo ./rcmanager redis /sys/kernel/tswap/tswap_nr_promoted_page  /sys/kernel/tswap/tswap_nr_disk_promoted_page 9000 /tmp/cman_ycsb /sys/kernel/tswap/tswap_stat
-   ```
+	sudo ./rcmanager redis /sys/kernel/tswap/tswap_nr_promoted_page  /sys/kernel/tswap/tswap_nr_disk_promoted_page 9000 /tmp/cman_ycsb /sys/kernel/tswap/tswap_stat
+	```
 
 7. Run balloon:
 
-   ```bash
-   cd balloon
+	```bash
+	cd balloon
    
-   # usgae: <cgroup name> <harvested size file path>
-   sudo ./balloon redis /tmp/harvested_size
+	# usgae: <cgroup name> <harvested size file path>
+	sudo ./balloon redis /tmp/harvested_size
    
-   # Then, the harvested size will be written to /tmp/harvested_size in bytes (with advisory file lock)
-   ```
+	# Then, the harvested size will be written to /tmp/harvested_size in bytes (with advisory file lock)
+	```
 
    
