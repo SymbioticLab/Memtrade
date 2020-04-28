@@ -18,6 +18,7 @@
 
 #define DEFAULT_QUARANTINE_TIME 120
 #define PREFETCH_BUFFER_SIZE (1 << (34 - PAGE_SHIFT))
+#define PREFETCH_GRACE_TIME 600
 
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Oliver Karaage");
@@ -396,7 +397,7 @@ static void prefetch_async_io_end(struct bio *bio)
 		goto invalidate_entry;
 	}
 
-	entry->time_stamp = jiffies;  /* update time stamp */
+	entry->time_stamp = jiffies + msecs_to_jiffies(PREFETCH_GRACE_TIME * 1000);
 	err = atomic_entry_insert(entry);
 	if (err < 0) {
 		pr_err("tswap: failed to insert prefetched entry into radix tree, ret: %d\n", err);

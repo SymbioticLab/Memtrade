@@ -68,29 +68,64 @@ OS: Ubuntu 14.04 or 16.04 (kernel 4.11)
     cmake --build .
    ```
 
-6. Install MVN
+6. Install maven:
 
-   You might need to install Java 8 and set environment variables
+   You might need to install Java 8 and set environment variables first
 
    ```	bash
-   wget https://archive.apache.org/dist/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.tar.gz
+   cd /opt
+   sudo wget https://archive.apache.org/dist/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.tar.gz
    sudo tar -xvzf apache-maven-3.6.0-bin.tar.gz
    sudo mv apache-maven-3.6.0 maven
    
-   sudo echo "export M2_HOME=/opt/maven\nexport PATH=${M2_HOME}/bin:${PATH}\nexport" > /etc/profile.d/mavenenv.sh
+   sudo -i
+   echo "export M2_HOME=/opt/maven\nexport PATH=${M2_HOME}/bin:${PATH}\nexport" > /etc/profile.d/mavenenv.sh
    source /etc/profile.d/mavenenv.sh
    ```
 
-7. Download and Compile YCSB
+7. Download and Compile YCSB:
 
 	```bash
 	git clone https://github.com/nanua/YCSB.git
 	cd YCSB
 	git checkout spot_memory
-	 mvn -pl site.ycsb:redis-binding -am clean package
+	
+	# compile with redis binding
+	mvn -pl site.ycsb:redis-binding -am clean package
+	# compile with memcached binding
 	mvn -pl site.ycsb:memcached-binding -am clean package
 	```
 
+8. Build and configure Redis:
+
+   ```bash
+   git clone https://github.com/antirez/redis.git
+   cd redis
+   # modify the fifth argument of createIntConfig("tracking-table-max-fill", ...) in file "src/config.c" from 100 to 1000000 to pass make test
+   make distclean # important! 
+   make 
+   ```
+
+   Configure Redis:
+
+   * Edit `/etc/sysctl.conf` and add `vm.overcommit_memory=1`. Then reboot or run the command `sysctl vm.overcommit_memory=1` for this to take effect
+
+   * Disable transparent hugepage: 
+
+   ```sh
+   echo never > /sys/kernel/mm/transparent_hugepage/enabled
+   echo never > /sys/kernel/mm/transparent_hugepage/defrag
+   ```
+
+   You can add this to `/etc/rc.local` to retain the setting after a reboot
+
+   * Edit `./redis/redis.conf` to not save `*.rdb` or `*.aof` file  
+     * make sure `appendonly` is `no` 
+     * remove or comment:
+       * `save 900 1`
+       * `save 300 10`
+       * `save 60 10000`
+     * add `save ""`; otherwise redis will store the in-memory data to a `.rdb` file at certain interval or after exceeding certain memory limit
 
 ## Run
 
@@ -106,101 +141,56 @@ We show how to run the memory harvester with YCSB-Redis as the application.
 
 2. Install tswap:
 
-   ```bash
-   sudo insmod tswap.ko
+	```bash
+	cd spot-memory/harvester/tswap
+	sudo insmod tswap.ko
 	```
 
-3. Build and configure Redis
-
-   ```bash
-   git clone https://github.com/antirez/redis.git
-   cd redis 
-   # modify the fifth argument of createIntConfig("tracking-table-max-fill", ...) in file "src/config.c" from 100 to 1000000 to pass make test
-   make distclean # important! 
-   make 
-   ```
-   
-   Configure Redis:
-   
-   * Edit `/etc/sysctl.conf` and add `vm.overcommit_memory=1`. Then reboot or run the command `sysctl vm.overcommit_memory=1` for this to take effect
-   
-   * Disable transparent hugepage: 
-   
-   ```sh
-   echo never > /sys/kernel/mm/transparent_hugepage/enabled
-   echo never > /sys/kernel/mm/transparent_hugepage/defrag
-   ```
-   
-   You can add this to `/etc/rc.local` to retain the setting after a reboot
-   
-   * Edit `./redis/redis.conf` to not save `*.rdb` or `*.aof` file  
-     * make sure `appendonly` is `no` 
-     * remove or comment:
-       * `save 900 1`
-       * `save 300 10`
-       * `save 60 10000`
-     * add `save ""`; otherwise redis will store the in-memory data to a `.rdb` file at certain interval or after exceeding certain memory limit
-
-4. Make the cgroup memory limit unlimited and start Redis with cgroup
+3. Create a cgroup, make the cgroup memory limit unlimited, and start Redis with cgroup:
 
 	```bash
-	sudo cgcreate -g memory:[cgroup name]
-	#sudo cgcreate -g memory:redis
-	echo -1 > 	/sys/fs/cgroup/memory/cgroup_name/memory.limit_in_bytes
-	#echo -1 > /sys/fs/cgroup/memory/redis/memory.limit_in_bytes
-	cgexec -g memory:[cgroup_name] ./redis/src/redis-server ./redis/redis.conf
-	#cgexec -g memory:redis ./redis/src/redis-server ./redis/redis.conf
+	sudo cgcreate -g memory:redis
+	sudo bash -c "echo -1 > /sys/fs/cgroup/memory/redis/memory.limit_in_bytes"
+	cgexec -g memory:redis ./redis/src/redis-server ./redis/redis.conf
 	```
-
-5. YCSB load data 
+	
+4. YCSB load data: 
 	```bash
 	cd ../YCSB
-	./bin/ycsb load redis -s -P workloads/[workload name] -p "redis.host=127.0.0.1" -p "redis.port=6379"
-	#./bin/ycsb load redis -s -P workloads/workloada -p "redis.host=127.0.0.1" -p "redis.port=6379"
+	./bin/ycsb load redis -s -P workloads/workloada -p "redis.host=127.0.0.1" -p "redis.port=6379"
 	```
-	Run workload
+	Run workload:
 	```bash
-	./bin/ycsb run redis -s -P workloads/[workload name] -p "redis.host=127.0.0.1" -p "redis.port=6379" -p "status.interval=1"
-	#./bin/ycsb run redis -s -P workloads/workloada -p "redis.host=127.0.0.1" -p "redis.port=6379" -p "status.interval=1"
+	./bin/ycsb run redis -s -P workloads/workloada -p "redis.host=127.0.0.1" -p "redis.port=6379" -p "status.interval=1"
 	```
 	
-	Optional run two workloads one after another:
-	
-	```bash
-	./bin/ycsb run redis -s -P workloads/[workload a name] -p "redis.host=127.0.0.1" -p "redis.port=6379" -p "status.interval=1" && ./bin/ycsb run redis -s -P workloads/[workload b name] -p "redis.host=127.0.0.1" -p "redis.port=6379" -p "status.interval=1"
-	#./bin/ycsb run redis -s -P workloads/workload_oliver_th -p "redis.host=127.0.0.1" -p "redis.port=6379" -p "status.interval=1" && ./bin/ycsb run redis -s -P workloads/workload_oliver_bh -p "redis.host=127.0.0.1" -p "redis.port=6379" -p "status.interval=1"
-	```
-	
-6. Run control loop (cmanager, cmanager_latency, or rcmanager):
+5. Run control loop (cmanager, cmanager_latency, or rcmanager):
 
 	```bash
 	# run cmanager
-   
-	#sudo <cgroup name> <performance file path> <initial cgroup size (MB)> <logging file path> <tswap stat path (optional)>
-   
+	
+	# parameters: [cgroup name] [performance file path] [initial cgroup size (MB)] [logging file path] [tswap stat path (optional)]
 	sudo ./cmanager redis /tmp/ycsb 9000 /tmp/cman_ycsb /sys/kernel/tswap/tswap_stat
-   
+	
 	# run cmanager_latency
-   
-	# usage: <cgroup name> <latency file path> <initial cgroup size (MB)> <logging file path> <tswap stat path (optional)>
-   
+	
+	# parameters: [cgroup name] [latency file path] [initial cgroup size (MB)] [logging file path] [tswap stat path (optional)]
 	sudo ./cmanager redis /tmp/ycsb_latency 9000 /tmp/cman_ycsb /sys/kernel/tswap/tswap_stat
-   
+	
 	# run rcmanager
-   
-	# usage: <cgroup name> <promotion rate file path> <disk promotion rate file path> <initial cgroup size (MB)> <logging file path> <tswap stat path> <performance file path (optional)>
-   
+	
+	# parameters: [cgroup name] [promotion rate file path] [disk promotion rate file path] [initial cgroup size (MB)] [logging file path] [tswap stat path] [performance file path (optional)]
 	sudo ./rcmanager redis /sys/kernel/tswap/tswap_nr_promoted_page  /sys/kernel/tswap/tswap_nr_disk_promoted_page 9000 /tmp/cman_ycsb /sys/kernel/tswap/tswap_stat
 	```
-
-7. Run balloon:
+  
+6. Run balloon:
 
 	```bash
 	cd balloon
-   
-	# usgae: <cgroup name> <harvested size file path>
+	
+	# parameters: [cgroup name] [harvested size file path]
 	sudo ./balloon redis /tmp/harvested_size
-   
+	
 	# Then, the harvested size will be written to /tmp/harvested_size in bytes (with advisory file lock)
 	```
 
