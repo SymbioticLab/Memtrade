@@ -16,14 +16,14 @@ all: ${APPS}
 
 coordinator: rcommon
 	$(LD) $(CFLAGS) -c ./coordinator.c
-	$(LD) $(LDFLAGS) ./utils.o ./rcommon.o ./coordinator.o -o coordinator  ${LDLIBS}
+	$(LD) $(LDFLAGS) ./rcommon.o ./coordinator.o -o coordinator  ${LDLIBS}
 
 producer: rcommon
 	$(LD) $(CFLAGS) -c ./producer.c 
-	$(LD) $(LDFLAGS) ./utils.o ./rcommon.o ./producer.o -o producer  ${LDLIBS}
+	$(LD) $(LDFLAGS) ./rcommon.o ./producer.o -o producer  ${LDLIBS}
 
 rcommon:
-	$(LD) $(CFLAGS) -c ./utils.c ./rcommon.c
+	$(LD) $(CFLAGS) -c ./rcommon.c
 
 clean:
 	rm -f coordinator producer *.o ${APPS}
