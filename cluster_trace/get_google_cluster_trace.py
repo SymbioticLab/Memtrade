@@ -12,7 +12,7 @@ SHA_FILE_NAME = "SHA256SUM";
 JOB_FILENAME = "jobs.json";
 JOB_TASK_FILENAME = "jobs_with_task.json";
 JOB_TASK_USAGE_FILENAME = "jobs_with_task_usage.json";
-TRACE_DIR = "./";
+TRACE_DIR = "/newdir/google";
 TASK_USAGE = "task_usage";
 JOB_EVENTS = "job_events";
 TASK_EVENTS = "task_events";
@@ -82,7 +82,7 @@ def print_trace_info():
 def download_trace(file_count):	
 	download_file(TRACE_DIR, SHA_FILE_NAME);
 	
-	with open(TRACE_DIR+SHA_FILE_NAME) as csv_file:
+	with open(path.join(TRACE_DIR, SHA_FILE_NAME)) as csv_file:
 		csv_reader = csv.reader(csv_file, delimiter=' ');
 		line_count = 0;
 		for row in csv_reader:
@@ -331,11 +331,11 @@ def main():
 
 #	get_file_names(trace_dir, trace_type);
 
-#	download_trace(TRACE_DIR, file_count);
+	download_trace(file_count);
 
 #	get_task_resource_usage(record_limit);
 #	parse_jobs(record_limit);
 #	parse_tasks(record_limit);
-	parse_task_usage(record_limit);
+#	parse_task_usage(record_limit);
 if __name__ == "__main__":
 	main();
