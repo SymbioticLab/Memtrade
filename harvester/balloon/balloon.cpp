@@ -118,13 +118,9 @@ long atomic_update_est_available_memory(long available_memory)
 {
 	long cur_est_available_memory;
 	g_est_available_memory_lock.lock();
-	if (available_memory < g_est_available_memory) {
-		g_est_available_memory = available_memory;
-	} else {
-		g_est_available_memory = (long) (g_ewma_beta * available_memory
-		                                 + (1 - g_ewma_beta) * g_est_available_memory);
-	}
-	cur_est_available_memory = g_est_available_memory;
+	g_est_available_memory = (long) (g_ewma_beta * available_memory
+	                                 + (1 - g_ewma_beta) * g_est_available_memory);
+	cur_est_available_memory = min(g_est_available_memory, available_memory);
 	g_est_available_memory_lock.unlock();
 	return cur_est_available_memory;
 }
