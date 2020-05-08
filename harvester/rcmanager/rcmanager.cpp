@@ -38,7 +38,7 @@ int g_perf_fd;
 
 mutex g_bottom_line_lock;
 long g_bottom_line;
-chrono::time_point<chrono::system_clock> g_bottom_line_timestamp;
+chrono::time_point<chrono::system_clock> g_bottom_line_expire_time;
 
 /*
  * Constants
@@ -47,24 +47,28 @@ chrono::time_point<chrono::system_clock> g_bottom_line_timestamp;
 constexpr long g_unit_size = (64 << 20);
 constexpr long g_min_cgroup_limit = (1 << 30);
 
-constexpr long g_promo_rate_threshold = (4 << 20);
-constexpr long g_disk_promo_rate_threshold = (64 << 10);
+constexpr long g_promo_rate_mi_threshold = (4 << 20);
+constexpr long g_disk_promo_rate_mi_threshold = (64 << 10);
+constexpr long g_promo_rate_bottom_line_threshold = (64 << 20);
+constexpr long g_disk_promo_rate_bottom_line_threshold = (1 << 20);
+constexpr long g_promo_bottom_line_ttl = 900;
 constexpr long g_promo_rate_prefetch_threshold = (128 << 20);
 constexpr long g_disk_promo_rate_prefetch_threshold = (2 << 20);
-constexpr long g_prefetch_size = (1 << 27);
+constexpr long g_promo_prefetch_size = (1 << 25);
 
 constexpr long g_ad = g_unit_size;
 constexpr float g_md_threshold = 1.2;
 constexpr float g_md = 0.95;
 
-constexpr float g_mi_rss_threshold = 2 * g_ad;
+constexpr long g_mi_rss_threshold = 2 * g_ad;
 constexpr float g_mi = 1.2;
 
 constexpr long g_dec_sleep_time = 5;
 constexpr long g_warrior_sleep_time = 1;
 constexpr long g_logging_sleep_time = 1;
 
-constexpr long g_bottom_line_expire_time = 180;
+constexpr long g_touch_rss_bottom_line_ttl = 3 * 360;  /* depends on quarantine time */
+constexpr long g_touch_rss_bottom_line_threshold = 2 * g_ad;
 constexpr long g_overflow_threshold = g_unit_size;
 
 /*
@@ -138,7 +142,7 @@ int file_read_unlock(int fd)
 	return fcntl(fd, F_SETLK, &fl);
 }
 
-long atomic_read_performance(int fd)
+double atomic_read_performance(int fd)
 {
 	int ret = file_read_lock(fd);
 	if (ret < 0) {
@@ -157,8 +161,8 @@ long atomic_read_performance(int fd)
 		return 0;
 	}
 
-	long performance;
-	sscanf(buffer, "%ld", &performance);
+	double performance;
+	sscanf(buffer, "%lf", &performance);
 
 	file_read_unlock(fd);
 	return performance;
@@ -207,7 +211,7 @@ long get_cgroup_rss(const char *cgroup_name)
 	long value;
 	long rss = 0;
 	while (in >> key >> value) {
-		if (key == "rss" || key == "mapped_file") {
+		if (key == "rss" || key == "mapped_file" || key == "cache") {
 			rss += value;
 		}
 	}
@@ -242,7 +246,7 @@ long atomic_get_bottom_line()
 	g_bottom_line_lock.lock();
 	if (g_bottom_line >= 0) {
 		chrono::time_point<chrono::system_clock> now = chrono::system_clock::now();
-		if (now > g_bottom_line_timestamp + chrono::seconds(g_bottom_line_expire_time)) {
+		if (now > g_bottom_line_expire_time) {
 			g_bottom_line = -1;
 		}
 	}
@@ -251,12 +255,21 @@ long atomic_get_bottom_line()
 	return bottom_line;
 }
 
-void atomic_set_bottom_line(long cgroup_limit)
+long atomic_update_bottom_line(long bottom_line, long ttl, bool extend_current)
 {
+	long new_bottom_line;
+
 	g_bottom_line_lock.lock();
-	g_bottom_line = cgroup_limit;
-	g_bottom_line_timestamp = chrono::system_clock::now();
+	if (bottom_line >= g_bottom_line) {
+		g_bottom_line = bottom_line;
+		g_bottom_line_expire_time = chrono::system_clock::now() + chrono::seconds(ttl);
+	} else if (extend_current && g_bottom_line >= 0) {
+		g_bottom_line_expire_time = chrono::system_clock::now() + chrono::seconds(ttl);
+	}
+	new_bottom_line = g_bottom_line;
 	g_bottom_line_lock.unlock();
+
+	return new_bottom_line;
 }
 
 long get_tswap_memory_size(const char *tswap_stat_path)
@@ -280,14 +293,14 @@ long get_tswap_memory_size(const char *tswap_stat_path)
 	return nr_memory_page << PAGE_SHIFT;
 }
 
-void tswap_prefetch()
+void tswap_prefetch(long prefetch_size)
 {
 	ofstream file("/sys/kernel/tswap/tswap_prefetch");
 	if (!file) {
 		cout << "cannot open tswap prefetch file" << endl;
 		exit(1);
 	}
-	file << (g_prefetch_size >> PAGE_SHIFT) << endl;
+	file << (prefetch_size >> PAGE_SHIFT) << endl;
 }
 
 /*
@@ -307,13 +320,25 @@ void warrior_thread_fn()
 		long tswap_mem = get_tswap_memory_size(g_tswap_stat_path);
 		long bottom_line = atomic_get_bottom_line();
 
+		/* issue prefetch */
 		if (promotion_rate >= g_promo_rate_prefetch_threshold
 		    || disk_promotion_rate >= g_disk_promo_rate_prefetch_threshold) {
-			tswap_prefetch();
+			tswap_prefetch(g_promo_prefetch_size);
+
+			cout << "INC LOOP | PREFETCH" << endl;
 		}
 
-		if (promotion_rate >= g_promo_rate_threshold
-		    || disk_promotion_rate >= g_disk_promo_rate_threshold
+		/* set bottom line */
+		if (promotion_rate >= g_promo_rate_bottom_line_threshold
+		    || disk_promotion_rate >= g_disk_promo_rate_bottom_line_threshold) {
+			bottom_line = atomic_update_bottom_line(min(g_physical_memory_size, (long)(g_mi * rss)),
+			                                        g_promo_bottom_line_ttl, true);
+
+			cout << "INC LOOP | SET BOTTOM LINE" << endl;
+		}
+
+		if (promotion_rate >= g_promo_rate_mi_threshold
+		    || disk_promotion_rate >= g_disk_promo_rate_mi_threshold
 		    || tswap_mem - swap > g_overflow_threshold) {
 			g_cgroup_limit_lock.lock();
 			if (rss < g_cgroup_limit - g_mi_rss_threshold) {
@@ -378,7 +403,7 @@ void logging_thread_fn()
 		             << tswap_memory_size;
 
 		if (g_perf_file_path != nullptr) {
-			long performance = atomic_read_performance(g_perf_fd);
+			double performance = atomic_read_performance(g_perf_fd);
 			logging_file << "," << performance << endl;
 		}
 
@@ -440,8 +465,8 @@ int main(int argc, char *argv[])
 		long swap = get_cgroup_swap(g_cgroup_name);
 		long tswap_mem = get_tswap_memory_size(g_tswap_stat_path);
 
-		if (promotion_rate >= g_promo_rate_threshold
-		    || disk_promotion_rate >= g_disk_promo_rate_threshold
+		if (promotion_rate >= g_promo_rate_mi_threshold
+		    || disk_promotion_rate >= g_disk_promo_rate_mi_threshold
 		    || tswap_mem - swap > g_overflow_threshold) {
 			cout << "DEC LOOP | promotion rate: " << (promotion_rate >> 20)
 			     << " MB, disk promotion rate: " << (disk_promotion_rate >> 10)
@@ -467,22 +492,17 @@ int main(int argc, char *argv[])
 			op = "AD";
 		}
 
+		/* apply bottom line */
 		if (bottom_line >= 0) {
 			proposed_cgroup_limit = max(proposed_cgroup_limit, bottom_line);
 			if (proposed_cgroup_limit >= g_cgroup_limit) {
-				cout << "DEC LOOP | promotion rate: " << (promotion_rate >> 20)
-				     << " MB, disk promotion rate: " << (disk_promotion_rate >> 10)
-				     << " KB, rss: " << (rss >> 20)
-				     << " MB, cgroup limit: " << (g_cgroup_limit >> 20)
-				     << " MB, bottom line: " << (bottom_line >> 20)
-				     << " MB, SKIP" << endl;
-
-				g_cgroup_limit_lock.unlock();
-				continue;
+				op = "SKIP";
 			}
-		} else if (proposed_cgroup_limit < rss) {
+		}
+		/* update bottom line */
+		if (proposed_cgroup_limit < rss + g_touch_rss_bottom_line_threshold) {
 			bottom_line = max(g_min_cgroup_limit, rss - g_ad);
-			atomic_set_bottom_line(bottom_line);
+			bottom_line = atomic_update_bottom_line(bottom_line, g_touch_rss_bottom_line_ttl, false);
 			proposed_cgroup_limit = max(proposed_cgroup_limit, bottom_line);
 		}
 
@@ -496,14 +516,12 @@ int main(int argc, char *argv[])
 
 		int ret = set_cgroup_limit(g_cgroup_name, g_cgroup_limit);
 		if (!ret) {
-			long proposed_bottom_line = g_cgroup_limit + g_ad;
-			atomic_set_bottom_line(proposed_bottom_line);
 			g_cgroup_limit = min(g_physical_memory_size, (long)(g_mi * g_cgroup_limit));
 			set_cgroup_limit(g_cgroup_name, g_cgroup_limit);
 
 			cout << "DEC LOOP | cgroup limit failed, MI, cgroup limit: "
 			     << (g_cgroup_limit >> 20) << " MB, bottom line: "
-			     << (proposed_bottom_line >> 20) << " MB" << endl;
+			     << (bottom_line >> 20) << " MB" << endl;
 		}
 		g_cgroup_limit_lock.unlock();
 	}

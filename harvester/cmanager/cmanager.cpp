@@ -7,6 +7,7 @@
 #include <climits>
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -21,11 +22,10 @@ using namespace std;
  */
 
 struct perf_point {
-	long performance;
-	long epoch;
+	double perf_avg;
+	double perf_std;
+	long epoch;  // TODO: handle epoch overflow
 };
-
-// TODO: handle epoch overflow
 
 /*
  * Global Variables
@@ -43,8 +43,8 @@ mutex g_cgroup_limit_lock;
 long g_cgroup_limit;
 
 mutex g_moving_max_lock;
-deque<long> g_recent_perf_queue;
-long g_sum_recent_perf;
+deque<double> g_recent_perf_queue;
+double g_sum_recent_perf;
 deque<perf_point> g_moving_max_queue;
 
 int g_perf_fd;
@@ -52,7 +52,7 @@ mutex g_perf_lock;
 
 mutex g_bottom_line_lock;
 long g_bottom_line;
-chrono::time_point<chrono::system_clock> g_bottom_line_timestamp;
+chrono::time_point<chrono::system_clock> g_bottom_line_expire_time;
 
 /*
  * Constants
@@ -61,24 +61,27 @@ chrono::time_point<chrono::system_clock> g_bottom_line_timestamp;
 constexpr long g_unit_size = (64 << 20);
 constexpr long g_min_cgroup_limit = (1 << 30);
 
-constexpr float g_performance_drop_threshold = 0.90;
-constexpr float g_performance_drop_prefetch_threshold = 0.10;
-constexpr long g_prefetch_size = (1 << 27);
+constexpr float g_performance_drop_mi_threshold = 3;
+constexpr float g_performance_drop_bottom_line_threshold = 10;
+constexpr float g_performance_drop_bottom_line_ttl = 900;
+constexpr float g_performance_drop_prefetch_threshold = 20;
+constexpr long g_performance_drop_prefetch_size = (1 << 25);
 
 constexpr long g_ad = g_unit_size;
 constexpr float g_md_threshold = 1.2;
 constexpr float g_md = 0.95;
 
-constexpr float g_mi_rss_threshold = 2 * g_ad;
+constexpr long g_mi_rss_threshold = 2 * g_ad;
 constexpr float g_mi = 1.2;
 
 constexpr long g_dec_sleep_time = 5;
 constexpr long g_warrior_sleep_time = 1;
 constexpr long g_logging_sleep_time = 1;
 
-constexpr long g_moving_max_window_size = 800;
-constexpr long g_max_performance_smooth_window_size = 4;
-constexpr long g_bottom_line_expire_time = 180;
+constexpr long g_moving_max_window_size = 1800;
+constexpr long g_max_performance_sample_window_size = 120;
+constexpr long g_touch_rss_bottom_line_ttl = 3 * 360;  /* depends on quarantine time */
+constexpr long g_touch_rss_bottom_line_threshold = 2 * g_ad;
 constexpr long g_overflow_threshold = g_unit_size;
 
 /*
@@ -151,7 +154,7 @@ int file_read_unlock(int fd)
 	return fcntl(fd, F_SETLK, &fl);
 }
 
-long atomic_read_performance(int fd)
+double atomic_read_performance(int fd)
 {
 	g_perf_lock.lock();
 	int ret = file_read_lock(fd);
@@ -168,64 +171,76 @@ long atomic_read_performance(int fd)
 		exit(1);
 	}
 
-	long performance;
-	sscanf(buffer, "%ld", &performance);
+	double performance;
+	sscanf(buffer, "%lf", &performance);
 
 	file_read_unlock(fd);
 	g_perf_lock.unlock();
 	return performance;
 }
 
-long atomic_get_max_performance()
+void atomic_get_max_performance(double *max_perf_avg, double *max_perf_std)
 {
 	g_moving_max_lock.lock();
-	long max_performance;
 	if (g_moving_max_queue.empty()) {
-		max_performance = 0;
+		*max_perf_avg = 0;
+		*max_perf_std = 0;
 	} else {
-		max_performance = g_moving_max_queue.front().performance;
+		*max_perf_avg = g_moving_max_queue.front().perf_avg;
+		*max_perf_std = g_moving_max_queue.front().perf_std;
 	}
 	g_moving_max_lock.unlock();
-	return max_performance;
 }
 
-void atomic_update_max_performance(long epoch, long performance)
+void atomic_update_max_performance(long epoch, double performance)
 {
 	g_moving_max_lock.lock();
 
-	/* smooth performance first */
+	if (!std::isfinite(performance)) {
+		cout << "WARNING | performance is not finite, ignored" << endl;
+		g_moving_max_lock.unlock();
+		return;
+	}
+
+	/* update recent performance samples */
 	g_recent_perf_queue.push_back(performance);
 	g_sum_recent_perf += performance;
-	if (g_recent_perf_queue.size() > g_max_performance_smooth_window_size) {
+	if (g_recent_perf_queue.size() > g_max_performance_sample_window_size) {
 		g_sum_recent_perf -= g_recent_perf_queue.front();
 		g_recent_perf_queue.pop_front();
 	}
 
-	long smoothed_performance = (float)g_sum_recent_perf / g_recent_perf_queue.size();
+	double perf_avg = g_sum_recent_perf / g_recent_perf_queue.size();
+	double perf_std = 0;
+	if (g_recent_perf_queue.size() > 1) {
+		for (double cur_perf : g_recent_perf_queue) {
+			perf_std += pow(cur_perf - perf_avg, 2);
+		}
+		perf_std = sqrt(perf_std / (double)(g_recent_perf_queue.size() - 1));
+	} else {
+		perf_std = 0;
+	}
 
+	if (!std::isfinite(perf_avg) || !std::isfinite(perf_std)) {
+		cout << "WARNING | performance avg or performance std is not finite, ignored" << endl;
+		g_moving_max_lock.unlock();
+		return;
+	}
+
+	/* update max average performance */
 	while (!g_moving_max_queue.empty()
 	       && (g_moving_max_queue.front().epoch <= epoch - g_moving_max_window_size
-	           || g_moving_max_queue.front().epoch + 1 < g_max_performance_smooth_window_size)) {
+	           || g_moving_max_queue.front().epoch + 1 < g_max_performance_sample_window_size)) {
 		g_moving_max_queue.pop_front();
 	}
 	while (!g_moving_max_queue.empty()
-	       && g_moving_max_queue.back().performance < smoothed_performance) {
+	       && g_moving_max_queue.back().perf_avg <= perf_avg) {
 		g_moving_max_queue.pop_back();
 	}
 	struct perf_point point;
 	point.epoch = epoch;
-	point.performance = smoothed_performance;
-	g_moving_max_queue.push_back(point);
-	g_moving_max_lock.unlock();
-}
-
-void atomic_set_max_performance(long epoch, long performance)
-{
-	g_moving_max_lock.lock();
-	g_moving_max_queue.clear();
-	struct perf_point point;
-	point.epoch = epoch;
-	point.performance = performance;
+	point.perf_avg = perf_avg;
+	point.perf_std = perf_std;
 	g_moving_max_queue.push_back(point);
 	g_moving_max_lock.unlock();
 }
@@ -245,7 +260,7 @@ long get_cgroup_rss(const char *cgroup_name)
 	long value;
 	long rss = 0;
 	while (in >> key >> value) {
-		if (key == "rss" || key == "mapped_file") {
+		if (key == "rss" || key == "mapped_file" || key == "cache") {
 			rss += value;
 		}
 	}
@@ -280,7 +295,7 @@ long atomic_get_bottom_line()
 	g_bottom_line_lock.lock();
 	if (g_bottom_line >= 0) {
 		chrono::time_point<chrono::system_clock> now = chrono::system_clock::now();
-		if (now > g_bottom_line_timestamp + chrono::seconds(g_bottom_line_expire_time)) {
+		if (now > g_bottom_line_expire_time) {
 			g_bottom_line = -1;
 		}
 	}
@@ -289,14 +304,18 @@ long atomic_get_bottom_line()
 	return bottom_line;
 }
 
-long atomic_update_bottom_line(long bottom_line)
+long atomic_update_bottom_line(long bottom_line, long ttl, bool extend_current)
 {
 	long new_bottom_line;
 
 	g_bottom_line_lock.lock();
-	g_bottom_line = max(g_bottom_line, bottom_line);
+	if (bottom_line >= g_bottom_line) {
+		g_bottom_line = bottom_line;
+		g_bottom_line_expire_time = chrono::system_clock::now() + chrono::seconds(ttl);
+	} else if (extend_current && g_bottom_line >= 0) {
+		g_bottom_line_expire_time = chrono::system_clock::now() + chrono::seconds(ttl);
+	}
 	new_bottom_line = g_bottom_line;
-	g_bottom_line_timestamp = chrono::system_clock::now();
 	g_bottom_line_lock.unlock();
 
 	return new_bottom_line;
@@ -323,14 +342,14 @@ long get_tswap_memory_size(const char *tswap_stat_path)
 	return nr_memory_page << PAGE_SHIFT;
 }
 
-void tswap_prefetch()
+void tswap_prefetch(long prefetch_size)
 {
 	ofstream file("/sys/kernel/tswap/tswap_prefetch");
 	if (!file) {
 		cout << "cannot open tswap prefetch file" << endl;
 		exit(1);
 	}
-	file << (g_prefetch_size >> PAGE_SHIFT) << endl;
+	file << (prefetch_size >> PAGE_SHIFT) << endl;
 }
 
 /*
@@ -341,25 +360,41 @@ void warrior_thread_fn()
 {
 	for (this_thread::sleep_for(chrono::seconds(g_warrior_sleep_time));;
 	     this_thread::sleep_for(chrono::seconds(g_warrior_sleep_time))) {
-		long performance = atomic_read_performance(g_perf_fd);
-		long max_performance = atomic_get_max_performance();
+		double performance = atomic_read_performance(g_perf_fd);
+		long epoch = g_epoch.fetch_add(1) + 1;
+		atomic_update_max_performance(epoch, performance);
+
+		double max_perf_avg, max_perf_std;
+		atomic_get_max_performance(&max_perf_avg, &max_perf_std);
+
 		long rss = get_cgroup_rss(g_cgroup_name);
+		long bottom_line = atomic_get_bottom_line();
 		long swap = (g_tswap_stat_path != nullptr) ? get_cgroup_swap(g_cgroup_name) : 0;
 		long tswap_mem = (g_tswap_stat_path != nullptr) ? get_tswap_memory_size(g_tswap_stat_path) : 0;
-		long bottom_line = atomic_get_bottom_line();
 
-		if (performance < max_performance * g_performance_drop_prefetch_threshold
+		/* issue prefetch */
+		if (performance < max_perf_avg - max_perf_std * g_performance_drop_prefetch_threshold
 		    && g_tswap_stat_path != nullptr) {
-			tswap_prefetch();
+			tswap_prefetch(g_performance_drop_prefetch_size);
+
+			cout << "INC LOOP | PREFETCH" << endl;
 		}
 
-		if (performance < max_performance * g_performance_drop_threshold
+		/* set bottom line */
+		if (performance < max_perf_avg - max_perf_std * g_performance_drop_bottom_line_threshold) {
+			bottom_line = atomic_update_bottom_line(min(g_physical_memory_size, (long)(g_mi * rss)),
+			                                        g_performance_drop_bottom_line_ttl, true);
+
+			cout << "INC LOOP | SET BOTTOM LINE" << endl;
+		}
+
+		if (performance < max_perf_avg - max_perf_std * g_performance_drop_mi_threshold
 		    || (g_tswap_stat_path != nullptr && tswap_mem - swap > g_overflow_threshold)) {
 			g_cgroup_limit_lock.lock();
 			if (rss < g_cgroup_limit - g_mi_rss_threshold) {
 				cout << "INC LOOP | performance: " << performance
-				     << ", max performance: " << max_performance
-				     << ", ratio: " << (float)performance / (float)max_performance
+				     << ", max performance avg: " << max_perf_avg
+				     << ", max performance std: " << max_perf_std
 				     << ", cgroup limit: " << (g_cgroup_limit >> 20)
 				     << " MB, rss: " << (rss >> 20)
 				     << " MB, bottom line: " << (bottom_line >> 20)
@@ -374,8 +409,8 @@ void warrior_thread_fn()
 			set_cgroup_limit(g_cgroup_name, g_cgroup_limit);
 
 			cout << "INC LOOP | performance: " << performance
-			     << ", max performance: " << max_performance
-			     << ", ratio: " << (float)performance / (float)max_performance
+			     << ", max performance avg: " << max_perf_avg
+			     << ", max performance std: " << max_perf_std
 			     << ", cgroup limit: " << (g_cgroup_limit >> 20)
 			     << " MB, rss: " << (rss >> 20)
 			     << " MB, bottom line: " << (bottom_line >> 20)
@@ -401,15 +436,18 @@ void logging_thread_fn()
 
 	for (this_thread::sleep_for(chrono::seconds(g_logging_sleep_time));;
 	     this_thread::sleep_for(chrono::seconds(g_logging_sleep_time))) {
-		long performance = atomic_read_performance(g_perf_fd);
-		long max_performance = atomic_get_max_performance();
+		double performance = atomic_read_performance(g_perf_fd);
+		double max_perf_avg, max_perf_std;
+		atomic_get_max_performance(&max_perf_avg, &max_perf_std);
+
 		long cgroup_limit = g_cgroup_limit;
 		long rss = get_cgroup_rss(g_cgroup_name);
 		long swap = get_cgroup_swap(g_cgroup_name);
 		long bottom_line = atomic_get_bottom_line();
 
 		logging_file << performance << ","
-		             << max_performance << ","
+		             << max_perf_avg << ","
+		             << max_perf_std << ","
 		             << cgroup_limit << ","
 		             << rss << ","
 		             << swap << ","
@@ -466,21 +504,21 @@ int main(int argc, char *argv[])
 	/* start AD loop */
 	for (this_thread::sleep_for(chrono::seconds(g_dec_sleep_time));;
 	     this_thread::sleep_for(chrono::seconds(g_dec_sleep_time))) {
-		/* update max performance */
-		long performance = atomic_read_performance(g_perf_fd);
-		long epoch = g_epoch.fetch_add(1) + 1;
-		atomic_update_max_performance(epoch, performance);
-		long max_performance = atomic_get_max_performance();
+		double performance = atomic_read_performance(g_perf_fd);
+		double max_perf_avg, max_perf_std;
+		atomic_get_max_performance(&max_perf_avg, &max_perf_std);
+
 		long rss = get_cgroup_rss(g_cgroup_name);
 		long bottom_line = atomic_get_bottom_line();
 		long swap = (g_tswap_stat_path != nullptr) ? get_cgroup_swap(g_cgroup_name) : 0;
 		long tswap_mem = (g_tswap_stat_path != nullptr) ? get_tswap_memory_size(g_tswap_stat_path) : 0;
 
-		if (performance < max_performance * g_performance_drop_threshold
+		/* skip AD/MD */
+		if (performance < max_perf_avg - max_perf_std * g_performance_drop_mi_threshold
 		    || (g_tswap_stat_path != nullptr && tswap_mem - swap > g_overflow_threshold)) {
-			cout << "DEC LOOP | epoch: " << epoch
-			     << ", performance: " << performance
-			     << ", max performance: " << max_performance
+			cout << "DEC LOOP | performance: " << performance
+			     << ", max performance avg: " << max_perf_avg
+				 << ", max performance std: " << max_perf_std
 			     << ", cgroup limit: " << (g_cgroup_limit >> 20)
 			     << " MB, rss: " << (rss >> 20)
 			     << " MB, bottom line: " << (bottom_line >> 20)
@@ -503,31 +541,24 @@ int main(int argc, char *argv[])
 			op = "AD";
 		}
 
+		/* apply bottom line */
 		if (bottom_line >= 0) {
 			proposed_cgroup_limit = max(proposed_cgroup_limit, bottom_line);
 			if (proposed_cgroup_limit >= g_cgroup_limit) {
-				cout << "DEC LOOP | epoch: " << epoch
-				     << ", performance: " << performance
-				     << ", max performance: " << max_performance
-				     << ", cgroup limit: " << (g_cgroup_limit >> 20)
-				     << " MB, rss: " << (rss >> 20)
-				     << " MB, bottom line: " << (bottom_line >> 20)
-				     << " MB, SKIP" << endl;
-
-				g_cgroup_limit_lock.unlock();
-				continue;
+				op = "SKIP";
 			}
 		}
-		if (proposed_cgroup_limit < rss) {
+		/* update bottom line */
+		if (proposed_cgroup_limit < rss + g_touch_rss_bottom_line_threshold) {
 			bottom_line = max(g_min_cgroup_limit, rss - g_ad);
-			bottom_line = atomic_update_bottom_line(bottom_line);
+			bottom_line = atomic_update_bottom_line(bottom_line, g_touch_rss_bottom_line_ttl, false);
 			proposed_cgroup_limit = max(proposed_cgroup_limit, bottom_line);
 		}
 
 		g_cgroup_limit = proposed_cgroup_limit;
-		cout << "DEC LOOP | epoch: " << epoch
-		     << ", performance: " << performance
-		     << ", max performance: " << max_performance
+		cout << "DEC LOOP | performance: " << performance
+		     << ", max performance avg: " << max_perf_avg
+			 << ", max performance std: " << max_perf_std
 		     << ", cgroup limit: " << (g_cgroup_limit >> 20)
 		     << " MB, rss: " << (rss >> 20)
 		     << " MB, bottom line: "<< (bottom_line >> 20)

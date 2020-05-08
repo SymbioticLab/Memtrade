@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cfloat>
+#include <cmath>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -22,11 +23,10 @@ using namespace std;
  */
 
 struct latency_point {
-	double latency;
-	long epoch;
+	double latency_avg;
+	double latency_std;
+	long epoch;  // TODO: handle epoch overflow
 };
-
-// TODO: handle epoch overflow
 
 /*
  * Global Variables
@@ -53,7 +53,7 @@ mutex g_latency_lock;
 
 mutex g_bottom_line_lock;
 long g_bottom_line;
-chrono::time_point<chrono::system_clock> g_bottom_line_timestamp;
+chrono::time_point<chrono::system_clock> g_bottom_line_expire_time;
 
 /*
  * Constants
@@ -62,24 +62,27 @@ chrono::time_point<chrono::system_clock> g_bottom_line_timestamp;
 constexpr long g_unit_size = (64 << 20);
 constexpr long g_min_cgroup_limit = (1 << 30);
 
-constexpr float g_latency_increase_threshold = 1.2;
-constexpr float g_latency_increase_prefetch_threshold = 10;
-constexpr long g_prefetch_size = (1 << 27);
+constexpr float g_latency_increase_mi_threshold = 3;
+constexpr float g_latency_increase_bottom_line_threshold = 10;
+constexpr float g_latency_increase_bottom_line_ttl = 900;
+constexpr float g_latency_increase_prefetch_threshold = 20;
+constexpr long g_latency_increase_prefetch_size = (1 << 25);
 
 constexpr long g_ad = g_unit_size;
 constexpr float g_md_threshold = 1.2;
 constexpr float g_md = 0.95;
 
-constexpr float g_mi_rss_threshold = 2 * g_ad;
+constexpr long g_mi_rss_threshold = 2 * g_ad;
 constexpr float g_mi = 1.2;
 
 constexpr long g_dec_sleep_time = 5;
 constexpr long g_warrior_sleep_time = 1;
 constexpr long g_logging_sleep_time = 1;
 
-constexpr long g_moving_min_window_size = 800;
-constexpr long g_min_latency_smooth_window_size = 4;
-constexpr long g_bottom_line_expire_time = 180;
+constexpr long g_moving_min_window_size = 1800;
+constexpr long g_min_latency_sample_window_size = 120;
+constexpr long g_touch_rss_bottom_line_ttl = 3 * 360;  /* depends on quarantine time */
+constexpr long g_touch_rss_bottom_line_threshold = 2 * g_ad;
 constexpr long g_overflow_threshold = g_unit_size;
 
 /*
@@ -177,56 +180,68 @@ double atomic_read_latency(int fd)
 	return latency;
 }
 
-double atomic_get_min_latency()
+void atomic_get_min_latency(double *min_latency_avg, double *min_latency_std)
 {
 	g_moving_min_lock.lock();
-	double min_latency;
 	if (g_moving_min_queue.empty()) {
-		min_latency = DBL_MAX;
+		*min_latency_avg = DBL_MAX;
+		*min_latency_std = 0;
 	} else {
-		min_latency = g_moving_min_queue.front().latency;
+		*min_latency_avg = g_moving_min_queue.front().latency_avg;
+		*min_latency_std = g_moving_min_queue.front().latency_std;
 	}
 	g_moving_min_lock.unlock();
-	return min_latency;
 }
 
 void atomic_update_min_latency(long epoch, double latency)
 {
 	g_moving_min_lock.lock();
 
-	/* smooth latency first */
+	if (!std::isfinite(latency)) {
+		cout << "WARNING | latency is not finite, ignored" << endl;
+		g_moving_min_lock.unlock();
+		return;
+	}
+
+	/* update recent latency samples */
 	g_recent_latency_queue.push_back(latency);
 	g_sum_recent_latency += latency;
-	if (g_recent_latency_queue.size() > g_min_latency_smooth_window_size) {
+	if (g_recent_latency_queue.size() > g_min_latency_sample_window_size) {
 		g_sum_recent_latency -= g_recent_latency_queue.front();
 		g_recent_latency_queue.pop_front();
 	}
 
-	double smoothed_latency = g_sum_recent_latency / g_recent_latency_queue.size();
+	double latency_avg = g_sum_recent_latency / g_recent_latency_queue.size();
+	double latency_std = 0;
+	if (g_recent_latency_queue.size() > 1) {
+		for (double cur_latency : g_recent_latency_queue) {
+			latency_std += pow(cur_latency - latency_avg, 2);
+		}
+		latency_std = sqrt(latency_std / (double)(g_recent_latency_queue.size() - 1));
+	} else {
+		latency_std = 0;
+	}
 
+	if (!std::isfinite(latency_avg) || !std::isfinite(latency_std)) {
+		cout << "WARNING | latency avg or latency std is not finite, ignored" << endl;
+		g_moving_min_lock.unlock();
+		return;
+	}
+
+	/* update min average latency */
 	while (!g_moving_min_queue.empty()
 	       && (g_moving_min_queue.front().epoch <= epoch - g_moving_min_window_size
-	           || g_moving_min_queue.front().epoch + 1 < g_min_latency_smooth_window_size)) {
+	           || g_moving_min_queue.front().epoch + 1 < g_min_latency_sample_window_size)) {
 		g_moving_min_queue.pop_front();
 	}
 	while (!g_moving_min_queue.empty()
-	       && g_moving_min_queue.back().latency > smoothed_latency) {
+	       && g_moving_min_queue.back().latency_avg >= latency_avg) {
 		g_moving_min_queue.pop_back();
 	}
 	struct latency_point point;
 	point.epoch = epoch;
-	point.latency = smoothed_latency;
-	g_moving_min_queue.push_back(point);
-	g_moving_min_lock.unlock();
-}
-
-void atomic_set_min_latency(long epoch, double latency)
-{
-	g_moving_min_lock.lock();
-	g_moving_min_queue.clear();
-	struct latency_point point;
-	point.epoch = epoch;
-	point.latency = latency;
+	point.latency_avg = latency_avg;
+	point.latency_std = latency_std;
 	g_moving_min_queue.push_back(point);
 	g_moving_min_lock.unlock();
 }
@@ -246,7 +261,7 @@ long get_cgroup_rss(const char *cgroup_name)
 	long value;
 	long rss = 0;
 	while (in >> key >> value) {
-		if (key == "rss" || key == "mapped_file") {
+		if (key == "rss" || key == "mapped_file" || key == "cache") {
 			rss += value;
 		}
 	}
@@ -281,7 +296,7 @@ long atomic_get_bottom_line()
 	g_bottom_line_lock.lock();
 	if (g_bottom_line >= 0) {
 		chrono::time_point<chrono::system_clock> now = chrono::system_clock::now();
-		if (now > g_bottom_line_timestamp + chrono::seconds(g_bottom_line_expire_time)) {
+		if (now > g_bottom_line_expire_time) {
 			g_bottom_line = -1;
 		}
 	}
@@ -290,14 +305,18 @@ long atomic_get_bottom_line()
 	return bottom_line;
 }
 
-long atomic_update_bottom_line(long bottom_line)
+long atomic_update_bottom_line(long bottom_line, long ttl, bool extend_current)
 {
 	long new_bottom_line;
 
 	g_bottom_line_lock.lock();
-	g_bottom_line = max(g_bottom_line, bottom_line);
+	if (bottom_line >= g_bottom_line) {
+		g_bottom_line = bottom_line;
+		g_bottom_line_expire_time = chrono::system_clock::now() + chrono::seconds(ttl);
+	} else if (extend_current && g_bottom_line >= 0) {
+		g_bottom_line_expire_time = chrono::system_clock::now() + chrono::seconds(ttl);
+	}
 	new_bottom_line = g_bottom_line;
-	g_bottom_line_timestamp = chrono::system_clock::now();
 	g_bottom_line_lock.unlock();
 
 	return new_bottom_line;
@@ -324,14 +343,14 @@ long get_tswap_memory_size(const char *tswap_stat_path)
 	return nr_memory_page << PAGE_SHIFT;
 }
 
-void tswap_prefetch()
+void tswap_prefetch(long prefetch_size)
 {
 	ofstream file("/sys/kernel/tswap/tswap_prefetch");
 	if (!file) {
 		cout << "cannot open tswap prefetch file" << endl;
 		exit(1);
 	}
-	file << (g_prefetch_size >> PAGE_SHIFT) << endl;
+	file << (prefetch_size >> PAGE_SHIFT) << endl;
 }
 
 /*
@@ -343,24 +362,40 @@ void warrior_thread_fn()
 	for (this_thread::sleep_for(chrono::seconds(g_warrior_sleep_time));;
 	     this_thread::sleep_for(chrono::seconds(g_warrior_sleep_time))) {
 		double latency = atomic_read_latency(g_latency_fd);
-		double min_latency = atomic_get_min_latency();
+		long epoch = g_epoch.fetch_add(1) + 1;
+		atomic_update_min_latency(epoch, latency);
+
+		double min_latency_avg, min_latency_std;
+		atomic_get_min_latency(&min_latency_avg, &min_latency_std);
+
 		long rss = get_cgroup_rss(g_cgroup_name);
+		long bottom_line = atomic_get_bottom_line();
 		long swap = (g_tswap_stat_path != nullptr) ? get_cgroup_swap(g_cgroup_name) : 0;
 		long tswap_mem = (g_tswap_stat_path != nullptr) ? get_tswap_memory_size(g_tswap_stat_path) : 0;
-		long bottom_line = atomic_get_bottom_line();
 
-		if (latency > min_latency * g_latency_increase_prefetch_threshold
+		/* issue prefetch */
+		if (latency > min_latency_avg + min_latency_std * g_latency_increase_prefetch_threshold
 		    && g_tswap_stat_path != nullptr) {
-			tswap_prefetch();
+			tswap_prefetch(g_latency_increase_prefetch_size);
+
+			cout << "INC LOOP | PREFETCH" << endl;
 		}
 
-		if (latency > min_latency * g_latency_increase_threshold
+		/* set bottom line */
+		if (latency > min_latency_avg + min_latency_std * g_latency_increase_bottom_line_threshold) {
+			bottom_line = atomic_update_bottom_line(min(g_physical_memory_size, (long)(g_mi * rss)),
+			                                        g_latency_increase_bottom_line_ttl, true);
+
+			cout << "INC LOOP | SET BOTTOM LINE" << endl;
+		}
+
+		if (latency > min_latency_avg + min_latency_std * g_latency_increase_mi_threshold
 		    || (g_tswap_stat_path != nullptr && tswap_mem - swap > g_overflow_threshold)) {
 			g_cgroup_limit_lock.lock();
 			if (rss < g_cgroup_limit - g_mi_rss_threshold) {
 				cout << "INC LOOP | latency: " << latency
-				     << ", min latency: " << min_latency
-				     << ", ratio: " << latency / min_latency
+				     << ", min latency avg: " << min_latency_avg
+				     << ", min latency std: " << min_latency_std
 				     << ", cgroup limit: " << (g_cgroup_limit >> 20)
 				     << " MB, rss: " << (rss >> 20)
 				     << " MB, bottom line: " << (bottom_line >> 20)
@@ -375,8 +410,8 @@ void warrior_thread_fn()
 			set_cgroup_limit(g_cgroup_name, g_cgroup_limit);
 
 			cout << "INC LOOP | latency: " << latency
-			     << ", min latency: " << min_latency
-			     << ", ratio: " << latency / min_latency
+			     << ", min latency avg: " << min_latency_avg
+			     << ", min latency std: " << min_latency_std
 			     << ", cgroup limit: " << (g_cgroup_limit >> 20)
 			     << " MB, rss: " << (rss >> 20)
 			     << " MB, bottom line: " << (bottom_line >> 20)
@@ -403,14 +438,17 @@ void logging_thread_fn()
 	for (this_thread::sleep_for(chrono::seconds(g_logging_sleep_time));;
 	     this_thread::sleep_for(chrono::seconds(g_logging_sleep_time))) {
 		double latency = atomic_read_latency(g_latency_fd);
-		double min_latency = atomic_get_min_latency();
+		double min_latency_avg, min_latency_std;
+		atomic_get_min_latency(&min_latency_avg, &min_latency_std);
+
 		long cgroup_limit = g_cgroup_limit;
 		long rss = get_cgroup_rss(g_cgroup_name);
 		long swap = get_cgroup_swap(g_cgroup_name);
 		long bottom_line = atomic_get_bottom_line();
 
 		logging_file << latency << ","
-		             << min_latency << ","
+		             << min_latency_avg << ","
+		             << min_latency_std << ","
 		             << cgroup_limit << ","
 		             << rss << ","
 		             << swap << ","
@@ -467,21 +505,21 @@ int main(int argc, char *argv[])
 	/* start AD loop */
 	for (this_thread::sleep_for(chrono::seconds(g_dec_sleep_time));;
 	     this_thread::sleep_for(chrono::seconds(g_dec_sleep_time))) {
-		/* update min latency */
 		double latency = atomic_read_latency(g_latency_fd);
-		long epoch = g_epoch.fetch_add(1) + 1;
-		atomic_update_min_latency(epoch, latency);
-		double min_latency = atomic_get_min_latency();
+		double min_latency_avg, min_latency_std;
+		atomic_get_min_latency(&min_latency_avg, &min_latency_std);
+
 		long rss = get_cgroup_rss(g_cgroup_name);
 		long bottom_line = atomic_get_bottom_line();
 		long swap = (g_tswap_stat_path != nullptr) ? get_cgroup_swap(g_cgroup_name) : 0;
 		long tswap_mem = (g_tswap_stat_path != nullptr) ? get_tswap_memory_size(g_tswap_stat_path) : 0;
 
-		if (latency > min_latency * g_latency_increase_threshold
+		/* skip AD/MD */
+		if (latency > min_latency_avg + min_latency_std * g_latency_increase_mi_threshold
 		    || (g_tswap_stat_path != nullptr && tswap_mem - swap > g_overflow_threshold)) {
-			cout << "DEC LOOP | epoch: " << epoch
-			     << ", latency: " << latency
-			     << ", min latency: " << min_latency
+			cout << "DEC LOOP | latency: " << latency
+			     << ", min latency avg: " << min_latency_avg
+			     << ", min latency std: " << min_latency_std
 			     << ", cgroup limit: " << (g_cgroup_limit >> 20)
 			     << " MB, rss: " << (rss >> 20)
 			     << " MB, bottom line: " << (bottom_line >> 20)
@@ -504,31 +542,24 @@ int main(int argc, char *argv[])
 			op = "AD";
 		}
 
+		/* apply bottom line */
 		if (bottom_line >= 0) {
 			proposed_cgroup_limit = max(proposed_cgroup_limit, bottom_line);
 			if (proposed_cgroup_limit >= g_cgroup_limit) {
-				cout << "DEC LOOP | epoch: " << epoch
-				     << ", latency: " << latency
-				     << ", min latency: " << min_latency
-				     << ", cgroup limit: " << (g_cgroup_limit >> 20)
-				     << " MB, rss: " << (rss >> 20)
-				     << " MB, bottom line: " << (bottom_line >> 20)
-				     << " MB, SKIP" << endl;
-
-				g_cgroup_limit_lock.unlock();
-				continue;
+				op = "SKIP";
 			}
 		}
-		if (proposed_cgroup_limit < rss) {
+		/* update bottom line */
+		if (proposed_cgroup_limit < rss + g_touch_rss_bottom_line_threshold) {
 			bottom_line = max(g_min_cgroup_limit, rss - g_ad);
-			bottom_line = atomic_update_bottom_line(bottom_line);
+			bottom_line = atomic_update_bottom_line(bottom_line, g_touch_rss_bottom_line_ttl, false);
 			proposed_cgroup_limit = max(proposed_cgroup_limit, bottom_line);
 		}
 
 		g_cgroup_limit = proposed_cgroup_limit;
-		cout << "DEC LOOP | epoch: " << epoch
-		     << ", latency: " << latency
-		     << ", min latency: " << min_latency
+		cout << "DEC LOOP | latency: " << latency
+			 << ", min latency avg: " << min_latency_avg
+			 << ", min latency std: " << min_latency_std
 		     << ", cgroup limit: " << (g_cgroup_limit >> 20)
 		     << " MB, rss: " << (rss >> 20)
 		     << " MB, bottom line: "<< (bottom_line >> 20)
