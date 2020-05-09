@@ -78,7 +78,7 @@ long get_cgroup_rss()
 	long value;
 	long rss = 0;
 	while (in >> key >> value) {
-		if (key == "rss" || key == "mapped_file") {
+		if (key == "rss" || key == "mapped_file" || key == "cache") {
 			rss += value;
 		}
 	}
@@ -108,10 +108,7 @@ long get_tswap_memory_size()
 
 long get_available_memory()
 {
-	g_harvested_lock.lock();
-	long harvested_memory = g_harvested_memory;
-	g_harvested_lock.unlock();
-	return g_total_memory - get_cgroup_rss() - get_tswap_memory_size() - harvested_memory;
+	return g_total_memory - get_cgroup_rss() - get_tswap_memory_size();
 }
 
 long atomic_update_est_available_memory(long available_memory)
@@ -197,43 +194,40 @@ int main(int argc, char *argv[])
 
 	for (this_thread::sleep_for(chrono::seconds(g_sleep_time));;
 	     this_thread::sleep_for(chrono::seconds(g_sleep_time))) {
+		g_harvested_lock.lock();
+
 		long available_memory = get_available_memory();
 		long cur_est_available_memory = atomic_update_est_available_memory(available_memory);
-		if (cur_est_available_memory < g_evict_threshold) {
-			long diff = g_evict_threshold - cur_est_available_memory;
+		if (cur_est_available_memory - g_harvested_memory < g_evict_threshold) {
+			long diff = g_evict_threshold - (cur_est_available_memory - g_harvested_memory);
 			int evict_count = 0;
 
-			g_harvested_lock.lock();
 			while (diff > 0 && g_harvested_memory > 0) {
 				g_harvested_memory -= g_node_size;
 				++evict_count;
 			}
 			atomic_update_file(g_fd, g_harvested_memory);
 			int remain_count = g_harvested_memory / g_node_size;
-			g_harvested_lock.unlock();
 
 			cout << "EVICT | available memory: " << (available_memory >> 20) << " MB, "
 			     << "estimated available memory: " << (cur_est_available_memory >> 20) << " MB, "
 			     << "allocated memory: " << ((remain_count * g_node_size) >> 20) << " MB, "
 			     << "evicted: " << ((evict_count * g_node_size) >> 20) << " MB" << endl;
-		} else if (cur_est_available_memory > g_alloc_threshold) {
-			g_harvested_lock.lock();
+		} else if (cur_est_available_memory - g_harvested_memory > g_alloc_threshold) {
 			g_harvested_memory += g_node_size;
 			int remain_count = g_harvested_memory / g_node_size;
 			atomic_update_file(g_fd, g_harvested_memory);
-			g_harvested_lock.unlock();
 
 			cout << "ALLOC | available memory: " << (available_memory >> 20) << " MB, "
 			     << "estimated available memory: " << (cur_est_available_memory >> 20) << " MB, "
 			     << "allocated memory: " << ((remain_count * g_node_size) >> 20) << " MB" << endl;
 		} else {
-			g_harvested_lock.lock();
 			int remain_count = g_harvested_memory / g_node_size;
-			g_harvested_lock.unlock();
 
 			cout << "SKIP  | available memory: " << (available_memory >> 20) << " MB, "
 			     << "estimated available memory: " << (cur_est_available_memory >> 20) << " MB, "
 			     << "allocated memory: " << ((remain_count * g_node_size) >> 20) << " MB" << endl;
 		}
+		g_harvested_lock.unlock();
 	}
 }
