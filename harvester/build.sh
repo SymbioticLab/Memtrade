@@ -5,7 +5,7 @@ BALLOON_DIR=$BASE_DIR"/balloon"
 PRODUCER_CLI=$BASE_DIR"/producer-cli"
 
 sudo apt-get update
-sudo apt-get install cmake cgroup-bin -y
+sudo apt-get install cmake cgroup-bin libevent-dev -y
 
 # build harvester
 cd $CMANAGER_DIR
