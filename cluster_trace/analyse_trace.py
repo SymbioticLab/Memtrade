@@ -187,6 +187,7 @@ def machine_usage(time_limit):
 	start_time = 0;
 	raw_time = 0;
 	cluster = {};
+	whole_cluster = {};
 
 	fieldnames = ['time', 'machine', 'cpu', 'assigned mem', 'file cache', 'total cache', 'max mem', 'total mem', 'disk'];
 
@@ -213,6 +214,7 @@ def machine_usage(time_limit):
 
 					if time not in cluster[machineid]:
 						cluster[machineid][time] = {"cpu" : 0.0, "assigned mem": 0.0, "file cache": 0.0, "total cache": 0.0, "max mem": 0.0, "disk": 0.0, "total mem": 0.0};
+						whole_cluster[time] = {"cpu" : 0.0, "assigned mem": 0.0, "total mem": 0.0, "machine": 0};
 
 					cluster[machineid][time]["cpu"] = cluster[machineid][time]["cpu"] + (float) (splits[task_usage.CPU_USAGE.value]);
 					cluster[machineid][time]["assigned mem"] = cluster[machineid][time]["assigned mem"] + (float) (splits[task_usage.ASSIGNED_MEMORY.value]);
@@ -220,7 +222,12 @@ def machine_usage(time_limit):
 					cluster[machineid][time]["total cache"] = cluster[machineid][time]["total cache"] + (float) (splits[task_usage.TOTAL_PAGE_CACHE.value]);
 					cluster[machineid][time]["max mem"] = cluster[machineid][time]["max mem"] + (float) (splits[task_usage.MAX_MEMORY_USAGE.value]);
 					cluster[machineid][time]["disk"] = cluster[machineid][time]["disk"] + (float) (splits[task_usage.DISK_USAGE.value]);
-					cluster[machineid][time]["total mem"] = cluster[machineid][time]["total mem"] + (float) (splits[task_usage.ASSIGNED_MEMORY.value]) + (float) (splits[task_usage.TOTAL_PAGE_CACHE.value]);
+					cluster[machineid][time]["total mem"] = cluster[machineid][time]["total mem"] + (float) (splits[task_usage.MEMORY_USAGE.value]);
+
+					whole_cluster[time]["cpu"] = whole_cluster[time]["cpu"] + cluster[machineid][time]["cpu"];
+					whole_cluster[time]["assigned mem"] = whole_cluster[time]["assigned mem"] + cluster[machineid][time]["assigned mem"];
+					whole_cluster[time]["total mem"] = whole_cluster[time]["total mem"] + cluster[machineid][time]["total mem"];
+					whole_cluster[time]["machine"] = whole_cluster[time]["machine"] + 1;
 
 					usage_count = usage_count + 1;
 
@@ -235,6 +242,16 @@ def machine_usage(time_limit):
 
 	print("read {0} rows, time : {1}, #machine: {2}".format(usage_count, raw_time, len(cluster)));
 	
+	machine_filepath = path.join(path.join(TRACE_DIR, MACHINE_USAGE), "cluster_usage.csv" );
+	with open(machine_filepath, mode='w') as csv_file:
+		writer = csv.DictWriter(csv_file, fieldnames=["time", "cpu", "assigned mem", "total mem", "machine"]);
+		writer.writeheader();
+		
+		for t in whole_cluster:
+			row = whole_cluster[t];
+			row["time"] = t;
+			writer.writerow(row);
+
 	machine_usage_row = {};
 	for machineid in cluster:
 		machine_filepath = path.join(path.join(TRACE_DIR, MACHINE_USAGE), "machine_usage_" + machineid + '.csv' );
@@ -250,6 +267,7 @@ def machine_usage(time_limit):
 					row[key] = cluster[machineid][t][key];
 				
 				row["machine"] = machineid;
+				row["time"] = t;
 				writer.writerow(row);
 				machine_usage_row[machineid] = machine_usage_row[machineid] + 1;
 
