@@ -31,7 +31,7 @@
 #define CGROUP_PATH_MAX_LEN 256
 #define PAGE_SHIFT 12
 #define MIN_SPOT_SIZE (50l << 20)
-
+#define SLEEP_TIME 1000000 // in microseconds 1sec = 1000000 us
 #define UNUSED(x) ((void)(x))
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
@@ -40,25 +40,18 @@ redisContext* producer_server;
 redisContext* coordinator_server;
 redisContext* connect_server(const char *addr, int port, struct timeval timeout);
 
-long g_total_memory;
-long g_est_available_memory;
-long g_harvested_memory;
+long long g_total_memory;
+long long g_est_available_memory;
+long long g_harvested_memory;
 
 char *g_cgroup_name;
-int g_fd;
 
 const float g_ewma_beta = 0.2;
-const long g_alloc_threshold = (8l << 30);
-const long g_evict_threshold = (1l << 30);
-const int g_sleep_time = 1;
-const long g_node_size = (64l << 20);
+const long long g_alloc_threshold = (8l << 30);
+const long long g_evict_threshold = (1l << 30);
+const long long g_node_size = (512l << 20);
 
-void handle_errors(void) {
-    ERR_print_errors_fp(stderr);
-    abort();
-}
-
-long get_total_memory_size() {
+long long get_total_memory_size() {
     FILE* mem_info = fopen("/proc/meminfo", "r");
     if (!mem_info) {
         printf("cannot open meminfo file\n");
@@ -86,7 +79,7 @@ long get_total_memory_size() {
                 shift = 1;
             }
 
-//            printf("total memory size: %ld bytes\n", size * shift);
+//            printf("total memory size: %lld bytes\n", size * shift);
             goto out;
         }
     }
@@ -94,10 +87,10 @@ long get_total_memory_size() {
     size = 0;
 out:
     fclose(mem_info);
-    return size;
+    return size * shift;
 }
 
-long get_cgroup_rss(char* cgroup_name) {
+long long get_cgroup_rss(char* cgroup_name) {
     char cgroup_path[CGROUP_PATH_MAX_LEN];
     sprintf(cgroup_path, "/sys/fs/cgroup/memory/%s/memory.stat", cgroup_name);
 
@@ -120,7 +113,7 @@ long get_cgroup_rss(char* cgroup_name) {
     return rss;
 }
 
-long get_tswap_memory_size() {
+long long get_tswap_memory_size() {
     FILE* tswap_stat = fopen("/sys/kernel/tswap/tswap_stat", "r");
     if (!tswap_stat) {
         printf("cannot open tswap stat file\n");
@@ -136,11 +129,12 @@ long get_tswap_memory_size() {
             nr_memory_page += value;
         }
     }
-//    printf("tswap page size: %ld\n", nr_memory_page << PAGE_SHIFT);
+//    printf("tswap page size: %lld\n", nr_memory_page << PAGE_SHIFT);
     return nr_memory_page << PAGE_SHIFT;
 }
 
-long get_available_memory() {
+long long get_available_memory() {
+//    printf("total memory: %lld, rss: %lld, tswap: %lld, available: %lld\n",g_total_memory, get_cgroup_rss(g_cgroup_name), get_tswap_memory_size());
     return g_total_memory - get_cgroup_rss(g_cgroup_name) - get_tswap_memory_size();
 }
 

@@ -52,14 +52,14 @@ int get(char* key, char* data, redisContext *server) {
     return 1;
 }
 
-int set_spot_size(int size, redisContext *server) {
-    redisReply *reply = redisCommand(server,"CONFIG SET maxmemory %d", size);
+int set_spot_size(long long size, redisContext *server) {
+    redisReply *reply = redisCommand(server,"CONFIG SET maxmemory %lld", size);
     printf("CONFIG SET maxmemory: %s\n", reply->str);
     freeReplyObject(reply);
     return 1;
 }
 
-long get_spot_size(redisContext *server) {
+long long get_spot_size(redisContext *server) {
     redisReply *reply = redisCommand(server,"CONFIG GET maxmemory");
     printf("CONFIG GET maxmemory: %s\n", reply->element[1]->str);
     freeReplyObject(reply);
@@ -72,11 +72,11 @@ int main (int argc, char **argv) {
         printf("Usage: <cgroup name>\n");
         exit(1);
     }
-/*
+
     struct timeval timeout = { 1, 500000 }; // 1.5 seconds
     producer_server = connect_server(PRODUCER_SERVER_IP, PRODUCER_SERVER_PORT, timeout);
     check_server(producer_server);
-    
+/*    
     char key[4] = "KEY1";
     char data[32] = "This a sample text, Length eq 32";
     set(key, data, producer_server);
@@ -88,17 +88,18 @@ int main (int argc, char **argv) {
         set_spot_size(size, producer_server);
         get_spot_size(producer_server);
     }
-    redisFree(producer_server);
 */
     g_cgroup_name = argv[1];
-    printf("available memory :%ld\n", get_available_memory());
+    g_total_memory = get_total_memory_size();
+    g_harvested_memory = 0;
+    printf("available memory :%lld\n", g_total_memory);
 
-    long available_memory, cur_est_available_memory, evict_count, diff;
+    long long available_memory, cur_est_available_memory, evict_count, diff;
 
     while(1) {
         available_memory = get_available_memory();
         cur_est_available_memory = update_est_available_memory(available_memory);
-
+//        printf("available memory: %lld, estimated: %lld, harvested: %lld\n", available_memory, cur_est_available_memory, g_harvested_memory);
         if (cur_est_available_memory - g_harvested_memory < g_evict_threshold) {
             diff = g_evict_threshold - (cur_est_available_memory - g_harvested_memory);
             evict_count = 0;
@@ -112,24 +113,27 @@ int main (int argc, char **argv) {
             g_harvested_memory = MAX(g_harvested_memory, MIN_SPOT_SIZE);
             set_spot_size(g_harvested_memory, producer_server);
 
-            printf("EVICT | available memory: %ld MB ", (available_memory >> 20));
-            printf("estimated available memory: %ld MB ", (cur_est_available_memory >> 20));
-            printf("allocated memory: %ld MB ", (g_harvested_memory >> 20));
-            printf("evicted: %ld MB\n", ((evict_count * g_node_size) >> 20));
+            printf("EVICT | available memory: %lld MB ", (available_memory >> 20));
+            printf("estimated available memory: %lld MB ", (cur_est_available_memory >> 20));
+            printf("allocated memory: %lld MB ", (g_harvested_memory >> 20));
+            printf("evicted: %lld MB\n", ((evict_count * g_node_size) >> 20));
         }
         else if (cur_est_available_memory - g_harvested_memory > g_alloc_threshold) {
             g_harvested_memory += g_node_size;
             set_spot_size(g_harvested_memory, producer_server);
 
-            printf("ALLOC | available memory: %ld MB ", (available_memory >> 20));
-            printf("estimated available memory: %ld MB ", (cur_est_available_memory >> 20));
-            printf("allocated memory: %ld MB ", (g_harvested_memory >> 20));
+            printf("ALLOC | available memory: %lld MB ", (available_memory >> 20));
+            printf("estimated available memory: %lld MB ", (cur_est_available_memory >> 20));
+            printf("allocated memory: %lld MB ", (g_harvested_memory >> 20));
         } 
         else {
-            printf("SKIP  | available memory: %ld MB ", (available_memory >> 20));
-            printf("estimated available memory: %ld MB ", (cur_est_available_memory >> 20));
-            printf("allocated memory: %ld MB\n", (g_harvested_memory >> 20));
+            printf("SKIP  | available memory: %lld MB ", (available_memory >> 20));
+            printf("estimated available memory: %lld MB ", (cur_est_available_memory >> 20));
+            printf("allocated memory: %lld MB\n", (g_harvested_memory >> 20));
         }
+        usleep(SLEEP_TIME);
     }
+
+    redisFree(producer_server);
     return 0;
 }
