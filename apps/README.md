@@ -11,7 +11,7 @@
     * [PARSEC](#parsec)
     * [CloudSuite](#cloudsuite)
     * [YCSB](#YCSB)
-    * [Yahoo Streaming Benchmark](#Yahoo Streaming Benchmark)
+    * [Yahoo Streaming Benchmark](#Yahoo-Streaming-Benchmark)
     * [TensorFlow](#TensorFlow)
     * [Snowset](#Snowset)
 * [CloudLab Configuration](#cloudlab-configuration)
@@ -31,7 +31,7 @@
 | Machine Learning | [Image Classification](#image-classifications) on TuriCreate; [Movie Recommendation](#movie-recommendation) on Spark; Image Classification on [TensorFlow](#TensorFlow) |
 | Parallel Programming | [PARSEC](#parsec) with x264 and canneal benchmark; [Metis](#metis) with Linear Regression |
 | Web Service | Olio (social-events), media streaming on [CloudSuite](#cloudsuite) |
-| Data Streaming | [Yahoo Streaming Benchmark](#Yahoo Streaming Benchmark) on Storm |
+| Data Streaming | [Yahoo Streaming Benchmark](#Yahoo-Streaming-Benchmark) on Storm |
 
 ## Voltdb
 
@@ -112,7 +112,9 @@
 ## Redis
 - Install Redis 
     ```sh
-    git clone https://github.com/antirez/redis.git
+    wget https://github.com/antirez/redis/archive/6.0.3.zip
+    unzip 6.0.3.zip
+    mv redis-6.0.3 redis
     cd redis 
     make distclean # important! 
     make 
@@ -166,6 +168,7 @@
     Here, `-x` changes run count; add `--out-file=FILE` to the command to specify output file 
 
 ## RocksDB
+
 - Install RocksDB
     ```sh
     sudo apt-get install libgflags-dev libsnappy-dev zlib1g-dev libbz2-dev libzstd-dev # dependency packages, libzstd-dev is available for xenial or later distributions
@@ -451,7 +454,41 @@ Yahoo Streaming Benchmark can also run the benchmark on Apache Spark and Apache 
 
 ## TensorFlow
 
+* Install Python environment:
 
+  ```bash
+  sudo apt-get update
+  sudo apt-get install python3-dev python3-pip
+  sudo apt-get install python3-venv
+  sudo apt-get install git
+  python3 -m venv env
+  source env/bin/activate
+  python -m pip install -U pip
+  python -m pip install -U setuptools
+  pip install tensorflow==1.5.0  # higher version might not work in VM
+  ```
+
+* Clone the workload repo:
+
+  ```bash
+  git clone https://github.com/CS-W4121/HW3.git
+  cd HW3/cifar10_estimator
+  ```
+
+* Create dataset:
+
+  ```bash
+  python generate_cifar10_tfrecords.py --data-dir=${PWD}/cifar-10-data
+  ```
+
+* Start training:
+
+  ```bash
+  python cifar10_main.py --data-dir=${PWD}/cifar-10-data \
+                         --job-dir=/tmp/cifar10 \
+                         --num-gpus=0 \
+                         --train-steps=10000
+  ```
 
 ## Snowset
 
