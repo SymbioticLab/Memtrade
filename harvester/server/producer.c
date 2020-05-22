@@ -61,7 +61,8 @@ void portal_parser(char* msg) {
 	//portal format 1,2,192.168.0.12:8000:10:1,192.168.0.11:9400:20
 	//<msg_type>,<consumer_count>,<ip:port:slab_size:id>, ...
 
-	char* ptr = msg, s[] = ",:", *addr;
+	char ptr[1024], s[] = ",:", *addr;
+	memcpy(ptr, msg, strlen(msg));
 	char* token = strtok(ptr, s);
 	int token_count = 0, type, consumer_count = 0, port, size, id;
 	
@@ -75,9 +76,7 @@ void portal_parser(char* msg) {
 			producer.consumer_count = producer.consumer_count + consumer_count;
 		}
 		else if(token_count % 4 == 2) {
-			while(*token)
-				(*addr++)=(*token++);
-			*addr = '\0';
+			memcpy(addr, token, strlen(token)); 
 		}
 		else if(token_count % 4 == 3){
 			port = atoi(token); 
@@ -90,7 +89,7 @@ void portal_parser(char* msg) {
 			producer.consumer_list[id].id = id;
 			producer.consumer_list[id].port = port;
 			producer.consumer_list[id].nslabs = producer.consumer_list[id].nslabs + size;
-			memcpy(producer.consumer_list[id].ip, addr, sizeof(addr));
+			memcpy(producer.consumer_list[id].ip, addr, strlen(addr));
 			printf("Msg type: %d, consumer ip: %s, port: %d, spot request: %d, id: %d\n", type, addr, port, size, id);
 		}
 		token = strtok(NULL, s);
@@ -125,7 +124,7 @@ void run_spot_manager(int consumer_id) {
 	else {
 		char redis_cmd[400];
 		sprintf(redis_cmd, "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 && /newdir/spot/redis/src/redis-server --bind %s --port %d --save \"\"", producer.ip, producer.port);
-
+		printf("%s", redis_cmd);
 		FILE* _pipe = popen(redis_cmd, "r");
 		//TODO: check redis status from the _pipe
 		producer.consumer_list[consumer_id].manager_state = RUNNING;
@@ -137,7 +136,7 @@ void handle_message(char* msg) {
 	int type, i;
 	
 	sscanf(msg, "%d,", &type);
-	printf("Message type: %d\n", type);
+	printf("Message type: %d, %s\n", type, msg);
 	switch (type) {
 		case CONNECTION_ACK:
 			send_registration_msg();

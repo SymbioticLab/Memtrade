@@ -128,10 +128,10 @@ void send_register_ack(int sock, int id) {
 
 void send_assignment_msg(int id, char* msg, int role) {
     if(role == PRODUCER){
-    	write(producer_list[id].sock, msg, sizeof(msg));
+    	write(producer_list[id].sock, msg, strlen(msg));
     }
     else if(role == CONSUMER){
-        write(consumer_list[id].sock, msg, sizeof(msg));
+        write(consumer_list[id].sock, msg, strlen(msg));
     }
 }
 
@@ -144,21 +144,23 @@ void send_producer_ready_msg(int producer_id, int consumer_id) {
 void register_client(char* ip, int port, int role, int sock) {
     if(role == PRODUCER) {
         int p_id = atomic_fetch_add_explicit(&producer_id, 1, memory_order_acquire);
-        memcpy(producer_list[p_id].ip, ip, sizeof(ip));
+        memcpy(producer_list[p_id].ip, ip, strlen(ip));
         producer_list[p_id].port = port;
         producer_list[p_id].id = p_id;
         producer_list[p_id].nslabs = 0;
         producer_list[p_id].available_slabs = 0;
         producer_list[p_id].sock = sock;
+	printf("producer registered with ip:port %s:%d\n", producer_list[p_id].ip, producer_list[p_id].port = port);
         send_register_ack(sock, p_id);
     }
     else if (role == CONSUMER) {
         int c_id = atomic_fetch_add_explicit(&consumer_id, 1, memory_order_acquire);
-        memcpy(consumer_list[c_id].ip, ip, sizeof(ip));
+        memcpy(consumer_list[c_id].ip, ip, strlen(ip));
         consumer_list[c_id].port = port;
         consumer_list[c_id].id = c_id;
         consumer_list[c_id].assigned_slabs = 0;
         consumer_list[c_id].sock = sock;
+	printf("consumer registered with ip:port %s:%d\n", consumer_list[c_id].ip, consumer_list[c_id].port);
         send_register_ack(sock, c_id);
     }
 }
@@ -169,7 +171,7 @@ void handle_message(char* msg, int sock) {
 	char ip[200], role[10];
 	
 	sscanf(msg, "%d,", &type);
-	printf("Message type: %d\n", type);
+	printf("Message type: %d, %s\n", type, msg);
 	switch (type) {
 		case PRODUCER_REG:
 			ip_parser(msg, ip, &port);
@@ -238,10 +240,11 @@ void find_placement(int consumer_id, int spot_size, int lease_time) {
         if(has_picked == 1) {
             p_count++;
             //<msg_type>,<consumer_count>,<ip:port:slab_size:id>, ...
-            sprintf(producer_assignment, "%d,%d,%s:%d:%d:%d", SPOT_ASSIGNMENT_PRODUCER, 1, consumer_list[consumer_id].ip, consumer_list[consumer_id].port, p_alloc, consumer_list[consumer_id].id);
-            sprintf(consumer_assignment, "%d,%d,%s:%d:%d:%d", SPOT_ASSIGNMENT_CONSUMER, 1, producer_list[p_id].ip, producer_list[p_id].port, p_alloc, producer_list[p_id].id);
+            sprintf(producer_assignment, "%d,%d,%s:%d:%d:%d\n", SPOT_ASSIGNMENT_PRODUCER, 1, consumer_list[consumer_id].ip, consumer_list[consumer_id].port, p_alloc, consumer_list[consumer_id].id);
+            sprintf(consumer_assignment, "%d,%d,%s:%d:%d:%d\n", SPOT_ASSIGNMENT_CONSUMER, 1, producer_list[p_id].ip, producer_list[p_id].port, p_alloc, producer_list[p_id].id);
             send_assignment_msg(p_id, producer_assignment, PRODUCER);
             send_assignment_msg(consumer_id, consumer_assignment, CONSUMER);
+		printf("producer: %s consumer: %s\n", producer_assignment, consumer_assignment);
         }
     }
 }

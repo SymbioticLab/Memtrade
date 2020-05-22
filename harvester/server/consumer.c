@@ -13,7 +13,7 @@
 #define MAX_CLIENT 128
 #define MAX_PRODUCER 128
 #define PAGE_SIZE 4096
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 8192
 #define SPOT_SIZE 5 // interms of GB
 #define LEASE_TIME 1 // interms of hour
 #define REMOTE_RATIO 0 //all local; ranges from 0-10; multiple of 10%; eg, 3 means 30% in remote
@@ -66,7 +66,8 @@ void portal_parser(char* msg) {
 	//portal format 1,2,192.168.0.12:8000:10,192.168.0.11:9400:20
 	//<msg_type>,<producer_count>,<ip:port:slab_size:id>, ...
 
-	char* ptr = msg, s[] = ",:", *addr;
+	char ptr[1024], s[] = ",:", addr[200];
+	memcpy(ptr, msg, strlen(msg));
 	char* token = strtok(ptr, s);
 	int token_count = 0, type, producer_count = 0, port, size, id;
 	
@@ -78,9 +79,7 @@ void portal_parser(char* msg) {
 			producer_count = atoi(token);
 		}
 		else if(token_count % 4 == 2) {
-			while(*token)
-				(*addr++)=(*token++);
-			*addr = '\0';
+			memcpy(addr, token, strlen(token));
 		}
 		else if(token_count % 4 == 3){
 			port = atoi(token); 
@@ -93,7 +92,7 @@ void portal_parser(char* msg) {
 			consumer.producer_list[id].id = id;
 			consumer.producer_list[id].port = port;
 			consumer.producer_list[id].nslabs = consumer.producer_list[id].nslabs + size;
-			memcpy(consumer.producer_list[id].ip, addr, sizeof(addr));
+			memcpy(consumer.producer_list[id].ip, addr, strlen(addr));
 			printf("Msg type: %d, producer ip: %s, port: %d, slab size: %d, id: %d\n", type, addr, port, size, id);
 		}
 		token = strtok(NULL, s);
@@ -117,7 +116,7 @@ void handle_message(char* msg) {
 	int type, i, producer_id, consumer_id;
 	
 	sscanf(msg, "%d,", &type);
-	printf("Message type: %d\n", type);
+	printf("Message type: %d, %s\n", type, msg);
 	switch (type) {
 		case CONNECTION_ACK:
 			send_registration_msg();
@@ -158,7 +157,7 @@ void run_consumer_app(int producer_id) {
 
 void run_consumer_redis() {
 	char *redis_cmd = "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 && /newdir/spot/redis/src/redis-server /newdir/spot/redis/redis.conf";
-
+	printf("%s\n", redis_cmd);
 	FILE* _pipe = popen(redis_cmd, "r");
 	//TODO: check redis status from the _pipe
 }
