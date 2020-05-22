@@ -168,7 +168,7 @@ void init() {
 	}
 }
 
-int main(int argc, char const *argv[]) { 
+int main(int argc, char *argv[]) { 
 	struct sockaddr_in address; 
 	int i, len, opt; 
 	struct sockaddr_in serv_addr; 

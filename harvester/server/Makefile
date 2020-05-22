@@ -1,13 +1,13 @@
-all: wss mem_harvest cold
+all: broker producer consumer
 
 broker: broker.c
-	gcc -lpthread -o broker broker.c
+	gcc broker.c -lpthread -o broker
 
 producer: producer.c
-	gcc -lpthread -o producer producer.c
+	gcc producer.c -lpthread -o producer
 
 consumer: consumer.c
-	gcc -lpthread -o consumer consumer.c
+	gcc consumer.c -lpthread -o consumer
 
 clean:
 	rm broker producer consumer

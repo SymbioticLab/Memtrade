@@ -136,7 +136,7 @@ void handle_message(char* msg) {
 				}
 			}
 		case PRODUCER_READY:
-            sscanf(msg, "%d,%d,%d,%d", &type, &producer_id, &consumer_id);
+            sscanf(msg, "%d,%d,%d", &type, &producer_id, &consumer_id);
 			printf("Message type: %d, from producer: %d to consumer %d\n", type, producer_id, consumer_id);
 			run_consumer_app(producer_id);
 			break;
@@ -180,7 +180,7 @@ void usage() {
 	printf("\n");
 }
 
-int main(int argc, char const *argv[]) { 
+int main(int argc, char *argv[]) { 
 	struct sockaddr_in address; 
 	int i, len, opt; 
 	struct sockaddr_in serv_addr; 
