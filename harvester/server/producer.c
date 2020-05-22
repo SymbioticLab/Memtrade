@@ -122,7 +122,7 @@ void run_spot_manager(int consumer_id) {
 }
 
 void handle_message(char* msg) {
-	int type;
+	int type, i;
 	
 	sscanf(msg, "%d,", &type);
 	printf("Message type: %d\n", type);
@@ -135,7 +135,6 @@ void handle_message(char* msg) {
 			printf("Message type: %d, id at broker: %d\n", type, producer.id);
 			break;
 		case SPOT_ASSIGNMENT_PRODUCER:
-			int i;
 			portal_parser(msg);
 			for(i = 0; i < producer.consumer_count; i++ ) {
 				if(producer.consumer_list[i].nslabs != 0) {

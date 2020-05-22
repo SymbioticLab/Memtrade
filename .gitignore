@@ -16,3 +16,6 @@ harvester/balloon/balloon
 harvester/cmanager/Makefile
 harvester/cmanager/cmanager
 harvester/producer-cli/producer-cli
+harvester/server/broker
+harvester/server/producer
+harvester/server/consumer

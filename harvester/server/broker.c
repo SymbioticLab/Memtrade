@@ -146,6 +146,7 @@ void register_client(char* ip, int port, int role, int sock) {
 
 void handle_message(char* msg, int sock) {
 	int type, port, spot_size, lease_time, client_id;
+    int producer_id, consumer_id;
 	char ip[200], role[10];
 	
 	sscanf(msg, "%d,", &type);
@@ -166,7 +167,6 @@ void handle_message(char* msg, int sock) {
             //TODO: find producer map
 			break;
         case PRODUCER_READY:
-            int producer_id, consumer_id;
             sscanf(msg, "%d,%d,%d,%d", &type, &producer_id, &consumer_id);
 			printf("Message type: %d, from producer: %d to consumer %d\n", type, producer_id, consumer_id);
 			send_producer_ready_msg(producer_id, consumer_id);

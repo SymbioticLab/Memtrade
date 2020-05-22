@@ -115,7 +115,7 @@ void send_spot_request() {
 }
 
 void handle_message(char* msg) {
-	int type;
+	int type, i, producer_id, consumer_id;
 	
 	sscanf(msg, "%d,", &type);
 	printf("Message type: %d\n", type);
@@ -129,7 +129,6 @@ void handle_message(char* msg) {
 			send_spot_request();
 			break;
 		case SPOT_ASSIGNMENT_CONSUMER:
-			int i;
 			portal_parser(msg);
 			for(i = 0; i < MAX_PRODUCER; i++ ) {
 				if(consumer.producer_list[i].nslabs != 0) {
@@ -137,7 +136,6 @@ void handle_message(char* msg) {
 				}
 			}
 		case PRODUCER_READY:
-            int producer_id, consumer_id;
             sscanf(msg, "%d,%d,%d,%d", &type, &producer_id, &consumer_id);
 			printf("Message type: %d, from producer: %d to consumer %d\n", type, producer_id, consumer_id);
 			run_consumer_app(producer_id);
@@ -167,7 +165,6 @@ void init() {
 	consumer.port = CONSUMER_PORT;
 	consumer.spot_size = SPOT_SIZE;
 	consumer.lease_time = LEASE_TIME;
-	consumer.producer_count = 0;
 
 	for(i=0; i<MAX_PRODUCER; i++) {
 		consumer.producer_list[i].nslabs = 0;
