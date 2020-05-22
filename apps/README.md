@@ -10,6 +10,10 @@
     * [Metis](#metis)
     * [PARSEC](#parsec)
     * [CloudSuite](#cloudsuite)
+    * [YCSB](#YCSB)
+    * [Yahoo Streaming Benchmark](#Yahoo-Streaming-Benchmark)
+    * [TensorFlow](#TensorFlow)
+    * [Snowset](#Snowset)
 * [CloudLab Configuration](#cloudlab-configuration)
     * [KVM Management](#kvm-management)
     * [Add 1TB Disk](#add-1tb-disk) 
@@ -21,15 +25,17 @@
 
 ## Workload
 
-| Use Case | Application | 
+| Use Case | Application |
 | ------------- |:-------------:|
-| Data Storage  | [RocksDB](#rocksdb); Memtier on [Redis](#redis); FB workload on [MemCahed](#memcached); TPC-C on [VoltDB](#voltdb) | 
-| Graph Algorithms  | TunkRank on [PowerGraph](#powergraph); PageRank, Connected Component, Label Propagation, Graph Coloring on [TuriCreate](#turicreate) |  
-| Machine Learning | [Image Classification](#image-classifications) on TuriCreate; [Movie Recommendation](#movie-recommendation) on Spark |  
+| Data Storage  | [RocksDB](#rocksdb); Memtier on [Redis](#redis); FB workload on [MemCahed](#memcached); TPC-C on [VoltDB](#voltdb); [YCSB](#YCSB) on Redis/Memcached/RocksDB; [Snowset](#Snowset) on Redis/Memcached/RocksDB |
+| Graph Algorithms  | TunkRank on [PowerGraph](#powergraph); PageRank, Connected Component, Label Propagation, Graph Coloring on [TuriCreate](#turicreate) |
+| Machine Learning | [Image Classification](#image-classifications) on TuriCreate; [Movie Recommendation](#movie-recommendation) on Spark; Image Classification on [TensorFlow](#TensorFlow) |
 | Parallel Programming | [PARSEC](#parsec) with x264 and canneal benchmark; [Metis](#metis) with Linear Regression |
 | Web Service | Olio (social-events), media streaming on [CloudSuite](#cloudsuite) |
+| Data Streaming | [Yahoo Streaming Benchmark](#Yahoo-Streaming-Benchmark) on Storm |
 
 ## Voltdb
+
 - To build VoltDB, you need OpenJDK, so [install](https://stackoverflow.com/questions/14788345/how-to-install-the-jdk-on-ubuntu-linux) it if you don?t have it.
     ```sh
     sudo add-apt-repository ppa:openjdk-r/ppa  
@@ -80,7 +86,7 @@
     sudo apt-get install -y memcached
     ./configure --enable-memaslap | grep libevent
     
-    # in Makefile, modify "LIBS =" to "LIBS = -lpthread"
+    # in Makefile, modify "LIBS =" to "LIBS = -lpthread", and add "-fpermissive" to "CXXFLAGS"
     make | grep error
     sudo make install
     sudo ldconfig
@@ -107,7 +113,9 @@
 ## Redis
 - Install Redis 
     ```sh
-    git clone https://github.com/antirez/redis.git
+    wget https://github.com/antirez/redis/archive/6.0.3.zip
+    unzip 6.0.3.zip
+    mv redis-6.0.3 redis
     cd redis 
     make distclean # important! 
     make 
@@ -161,6 +169,7 @@
     Here, `-x` changes run count; add `--out-file=FILE` to the command to specify output file 
 
 ## RocksDB
+
 - Install RocksDB
     ```sh
     sudo apt-get install libgflags-dev libsnappy-dev zlib1g-dev libbz2-dev libzstd-dev # dependency packages, libzstd-dev is available for xenial or later distributions
@@ -276,11 +285,252 @@
 ## PARSEC
  PARSEC is a collection of parallel programs which are used for performance studies of multiprocessor machines. I did not run this benchmark yet. We can follow this [repo](https://github.com/bamos/parsec-benchmark) to run PARSEC benchmarks.
 ## CloudSuite
+
 I did not configure and run this workload yet. We can follow the official documentation of [web-serving](https://github.com/parsa-epfl/cloudsuite/blob/master/docs/benchmarks/web-serving.md) and [media-streaming](https://github.com/parsa-epfl/cloudsuite/blob/master/docs/benchmarks/media-streaming.md) to evaluate social media and video streaming type services, respectively. 
 
 This [repo](https://github.com/chetui/CloudSuiteTutorial/tree/master/web_serving) can also be helpful if the official documentation (docer-based deployment) doesn't work.
 
+## YCSB
+
+* Install JDK 1.8
+
+* Install Maven 3.6:
+
+  ```bash
+  cd /opt
+  sudo wget https://archive.apache.org/dist/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.tar.gz
+  sudo tar -xvzf apache-maven-3.6.0-bin.tar.gz
+  sudo mv apache-maven-3.6.0 maven
+  ```
+
+  Add the following lines to `/etc/profile.d/mavenenv.sh`:
+
+  ```bash
+  export M2_HOME=/opt/maven
+  export PATH=${M2_HOME}/bin:${PATH}
+  ```
+
+  Then run:
+
+  ```bash
+  sudo chmod +x /etc/profile.d/mavenenv.sh
+  source /etc/profile.d/mavenenv.sh
+  ```
+
+* Install YCSB:
+
+  ```bash
+  git clone https://github.com/yuhong-zhong/YCSB.git
+  cd YCSB
+  git checkout spot_memory
+  
+  # build with Redis binding
+  mvn -pl site.ycsb:redis-binding -am clean package
+  # build with Memcached binding
+  mvn -pl site.ycsb:memcached-binding -am clean package
+  # build with RocksDB binding
+  mvn -pl site.ycsb:rocksdb-binding -am clean package
+  ```
+
+* Run Zipfian distributed workload on Redis/Memcached/RocksDB:
+
+  Save the following lines as a file which located at `YCSB/workloads/workload_zipfian`:
+
+  ```bash
+  recordcount=1000000
+  operationcount=200000000
+  fieldcount=1
+  fieldlength=4096
+  workload=site.ycsb.workloads.CoreWorkload
+  
+  readallfields=true
+  
+  readproportion=0.95
+  updateproportion=0.05
+  scanproportion=0
+  insertproportion=0
+  
+  requestdistribution=zipfian
+  zipfian.constant=0.5
+  threadcount=1
+  ```
+
+  For Redis and Memcached, make sures that they are running. For RocksDB, since it is a embedded data base, it will be started by YCSB.
+
+  Then, load pre-exist data into the underlying database:
+
+  ```bash
+  # Redis
+  ./bin/ycsb load redis -s -P workloads/workload_zipfian -p "redis.host=127.0.0.1" -p "redis.port=6379"
+  
+  # Memcached
+  ./bin/ycsb load memcached -s -P workloads/workload_zipfian -p "memcached.hosts=127.0.0.1"
+  
+  # RocksDB (we use direct I/O here)
+  ./bin/ycsb load rocksdb -s -P workloads/workload_zipfian -p rocksdb.dir=/newdir/ycsb-rocksdb-data -p rocksdb.direct=true
+  ```
+
+  At last, run the specified workload:
+
+  ```bash
+  # Redis
+  ./bin/ycsb run redis -s -P workloads/workload_zipfian -p "redis.host=127.0.0.1" -p "redis.port=6379" -p "status.interval=1"
+  
+  # Memcached
+  ./bin/ycsb run memcached -s -P workloads/workload_zipfian -p "memcached.hosts=127.0.0.1" -p "status.interval=1" -p "status.interval=1"
+  
+  # RocksDB (we use direct I/O here)
+  ./bin/ycsb run rocksdb -s -P workloads/workload_zipfian -p rocksdb.dir=/newdir/ycsb-rocksdb-data -p rocksdb.direct=true -p "status.interval=1"
+  ```
+
+## Yahoo Streaming Benchmark
+
+
+* Install JDK 1.8
+
+* Install Maven 3.6:
+
+  ```bash
+  cd /opt
+  sudo wget https://archive.apache.org/dist/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.tar.gz
+  sudo tar -xvzf apache-maven-3.6.0-bin.tar.gz
+  sudo mv apache-maven-3.6.0 maven
+  ```
+
+  Add the following lines to `/etc/profile.d/mavenenv.sh`:
+
+  ```bash
+  export M2_HOME=/opt/maven
+  export PATH=${M2_HOME}/bin:${PATH}
+  ```
+
+  Then run:
+
+  ```bash
+  sudo chmod +x /etc/profile.d/mavenenv.sh
+  source /etc/profile.d/mavenenv.sh
+  ```
+
+
+* Install Yahoo Streaming Benchmark: (make sure you have enough space)
+
+  ```bash
+  git clone https://github.com/yuhong-zhong/streaming-benchmarks.git
+  cd streaming-benchmarks
+  ./stream-bench.sh SETUP
+  ```
+
+* Config Redis which is used by the streaming benchmark:
+
+  - Edit `/etc/sysctl.conf` and add `vm.overcommit_memory=1`
+
+  - Then reboot or run the command `sysctl vm.overcommit_memory=1` for this to take effect
+
+  - Disable transparent hugepage: 
+
+    ```sh
+    echo never > /sys/kernel/mm/transparent_hugepage/enabled
+    echo never > /sys/kernel/mm/transparent_hugepage/defrag
+    ```
+
+    You can add this to `/etc/rc.local` to retain the setting after a reboot
+
+  - Edit `streaming-benchmarks/redis-4.0.11/redis.conf` to not save `*.rdb` or `*.aof` file
+
+    - make sure `appendonly` is `no` 
+    - remove or comment:
+      `save 900 1`
+      `save 300 10`
+      `save 60 10000`
+    - add `save ""`; otherwise redis will store the in-memory data to a `.rdb` file at certain interval or after exceeding certain memory limit
+
+* Run Yahoo Streaming Benchmark with a given test time:
+
+  ```bash
+  export TEST_TIME=1800  # run with 1800 seconds
+  ./stream-bench.sh STORM_TEST
+  ```
+
+Yahoo Streaming Benchmark can also run the benchmark on Apache Spark and Apache Flink. However, we haven't try them yet.
+
+## TensorFlow
+
+* Install Python environment:
+
+  ```bash
+  sudo apt-get update
+  sudo apt-get install python3-dev python3-pip
+  sudo apt-get install python3-venv
+  sudo apt-get install git
+  python3 -m venv env
+  source env/bin/activate
+  python -m pip install -U pip
+  python -m pip install -U setuptools
+  pip install tensorflow==1.5.0  # higher version might not work in VM
+  ```
+
+* Clone the workload repo:
+
+  ```bash
+  git clone https://github.com/CS-W4121/HW3.git
+  cd HW3/cifar10_estimator
+  ```
+
+* Create dataset:
+
+  ```bash
+  python generate_cifar10_tfrecords.py --data-dir=${PWD}/cifar-10-data
+  ```
+
+* Start training:
+
+  ```bash
+  python cifar10_main.py --data-dir=${PWD}/cifar-10-data \
+                         --job-dir=/tmp/cifar10 \
+                         --num-gpus=0 \
+                         --train-steps=10000
+  ```
+
+## Snowset
+
+* Download Snowset:
+
+  ```bash
+  wget http://www.cs.cornell.edu/~midhul/snowset/snowset-main.csv.gz
+  gunzip snowset-main.csv.gz
+  ```
+
+* Parse Snowset and generate a Memcachier-like workload file with the Python script `scripts/parse_snowset.py`
+
+* Install [YCSB](#YCSB)
+
+* Install [Redis](#Redis) or [RocksDB](#RocksDB) or [Memcached](#Memcached)
+
+* Save the following lines to `YCSB/workload/workload_snowset`:
+
+  ```bash
+  operationcount=126726366  # number of requests generated
+  threadcount=36
+  workload=site.ycsb.workloads.MemcachierWorkload
+  trace=/newdir/tmp/snowset-m.out  # location of the parsed workload file, should be in tmpfs
+  acceleration=10  # how much do we want to accelerate the trace
+  ```
+
+* Run Snowset:
+
+  ```bash
+  # Redis
+  ./bin/ycsb run redis -s -P workloads/workload_snowset -p "redis.host=127.0.0.1" -p "redis.port=6379" -p "status.interval=1"
+  
+  # Memcached
+  ./bin/ycsb run memcached -s -P workloads/workload_snowset -p "memcached.hosts=127.0.0.1" -p "status.interval=1" -p "status.interval=1"
+  
+  # RocksDB (we use direct I/O here)
+  ./bin/ycsb run rocksdb -s -P workloads/workload_snowset -p rocksdb.dir=/newdir/ycsb-rocksdb-data -p rocksdb.direct=true -p "status.interval=1"
+  ```
+
 ## Cloudlab Configuration
+
 #### KVM Management
 - To check whether the system supports virtualization
     ```sh
@@ -420,7 +670,7 @@ This [repo](https://github.com/chetui/CloudSuiteTutorial/tree/master/web_serving
 * Install package dependencies 
     ```sh
     apt-get install -y git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache  libelf-dev libqt4-dev pkg-config ncurses-dev
-   
+      
     #if gcc/g++ has older versions, update them to gcc-7
     apt-get install -y software-properties-common
     add-apt-repository ppa:ubuntu-toolchain-r/test
