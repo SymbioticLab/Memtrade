@@ -60,28 +60,28 @@ chrono::time_point<chrono::system_clock> g_bottom_line_expire_time;
  */
 
 constexpr long g_unit_size = (64 << 20);
-constexpr long g_min_cgroup_limit = (1 << 30);
+constexpr long g_min_cgroup_limit = 0;
 
 constexpr float g_latency_increase_mi_threshold = 3;
-constexpr float g_latency_increase_bottom_line_threshold = 10;
+constexpr float g_latency_increase_bottom_line_threshold = 12;
 constexpr float g_latency_increase_bottom_line_ttl = 900;
 constexpr float g_latency_increase_prefetch_threshold = 20;
 constexpr long g_latency_increase_prefetch_size = (1 << 25);
 
 constexpr long g_ad = g_unit_size;
-constexpr float g_md_threshold = 1.2;
+constexpr float g_md_threshold = 2;
 constexpr float g_md = 0.95;
 
 constexpr long g_mi_rss_threshold = 2 * g_ad;
-constexpr float g_mi = 1.2;
+constexpr float g_mi = 2;
 
 constexpr long g_dec_sleep_time = 5;
 constexpr long g_warrior_sleep_time = 1;
 constexpr long g_logging_sleep_time = 1;
 
 constexpr long g_moving_min_window_size = 1800;
-constexpr long g_min_latency_sample_window_size = 120;
-constexpr long g_touch_rss_bottom_line_ttl = 3 * 360;  /* depends on quarantine time */
+constexpr long g_min_latency_sample_window_size = 510;
+constexpr long g_touch_rss_bottom_line_ttl = 2.5 * 480;  /* depends on quarantine time */
 constexpr long g_touch_rss_bottom_line_threshold = 2 * g_ad;
 constexpr long g_overflow_threshold = g_unit_size;
 
