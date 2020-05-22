@@ -16,8 +16,7 @@
 #define BUFFER_SIZE 4096
 #define SPOT_SIZE 5 // interms of GB
 #define LEASE_TIME 1 // interms of hour
-//<msg_type,msg_id,msg>
-//1+10+4096
+#define REMOTE_RATIO 0 //all local; ranges from 0-10; multiple of 10%; eg, 3 means 30% in remote
 
 enum msg_type {
 	CONNECTION_ACK = 0,
@@ -56,6 +55,7 @@ struct {
 	int id;
 	int spot_size;
 	int lease_time;
+	int remote_ratio;
 	struct producer_info_t producer_list[MAX_PRODUCER + 2];
 } consumer;
 
@@ -93,7 +93,6 @@ void portal_parser(char* msg) {
 			consumer.producer_list[id].id = id;
 			consumer.producer_list[id].port = port;
 			consumer.producer_list[id].nslabs = consumer.producer_list[id].nslabs + size;
-			consumer.producer_list[id].manager_state = RUNNING;
 			memcpy(consumer.producer_list[id].ip, addr, sizeof(addr));
 			printf("Msg type: %d, producer ip: %s, port: %d, slab size: %d, id: %d\n", type, addr, port, size, id);
 		}
@@ -138,6 +137,8 @@ void handle_message(char* msg) {
 		case PRODUCER_READY:
             sscanf(msg, "%d,%d,%d", &type, &producer_id, &consumer_id);
 			printf("Message type: %d, from producer: %d to consumer %d\n", type, producer_id, consumer_id);
+			consumer.producer_list[producer_id].manager_state = RUNNING;
+			//TODO: check for the correctness of the remote-local ratio; especially when multiple producers are mapped for a single request 
 			run_consumer_app(producer_id);
 			break;
 		default:
@@ -147,7 +148,6 @@ void handle_message(char* msg) {
 }
 
 void run_consumer_app(int producer_id) {
-	//TODO: add consumer vs producer redis address
 	char consumer_cmd[400];
 	sprintf(consumer_cmd, "cd /newdir/spot/YCSB && ./bin/ycsb load redis -s -P workloads/workloada -p \"redis.consumer_host=127.0.0.1\" -p \"redis.consumer_port=6379\"  -p \"redis.host=%s\" -p \"redis.port=%d\" 2>&1 | tee /newdir/ycsb.txt", consumer.producer_list[producer_id].ip, consumer.producer_list[producer_id].port);
 
@@ -172,6 +172,7 @@ void init() {
 	consumer.port = CONSUMER_PORT;
 	consumer.spot_size = SPOT_SIZE;
 	consumer.lease_time = LEASE_TIME;
+	consumer.remote_ratio = REMOTE_RATIO;
 
 	for(i=0; i<MAX_PRODUCER; i++) {
 		consumer.producer_list[i].nslabs = 0;
@@ -182,7 +183,7 @@ void init() {
 }
 
 void usage() {
-	printf("Usage ./client [-b broker-ip] [-p broker-port] [-c consumer-ip] [-q consumer-port] [-s spot-size] [-t lease-time]\n");
+	printf("Usage ./client [-b broker-ip] [-p broker-port] [-c consumer-ip] [-q consumer-port] [-s spot-size] [-t lease-time] [-r remote-ratio]\n");
 	printf("Default broker ip:port is %s:%d, consumer ip:port is %s:%d\n", BROKER_IP, BROKER_PORT, CONSUMER_IP, CONSUMER_PORT);
 	printf("\n");
 }
@@ -195,7 +196,7 @@ int main(int argc, char *argv[]) {
 
 	init();
 
-	while ((opt = getopt(argc, argv, "hb:p:c:q:s:t")) != -1) {
+	while ((opt = getopt(argc, argv, "hb:p:c:q:s:t:r")) != -1) {
 		switch (opt) {
 		case 'h':
 			usage();
@@ -217,6 +218,9 @@ int main(int argc, char *argv[]) {
 			break;
 		case 't':
 			consumer.lease_time = atoi(optarg);
+			break;
+		case 'r':
+			consumer.remote_ratio = atoi(optarg);
 			break;
 		}
 	}

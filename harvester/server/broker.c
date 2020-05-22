@@ -19,6 +19,10 @@
 #define MAX_CLIENT (MAX_PRODUCER + MAX_CONSUMER)
 #define BUFFER_SIZE 4096
 #define MAX_ID 4
+#define MIN_FREE 1 //Minimum of 1GB free in producer
+
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
 enum role {
     PRODUCER = 0,
@@ -60,10 +64,10 @@ struct timeval ts[MAX_ID][4];
 struct producer_info_t producer_list[MAX_PRODUCER + 2];
 struct consumer_info_t consumer_list[MAX_CONSUMER + 2];
 
-atomic_int client_id = ATOMIC_VAR_INIT(0);
 atomic_int consumer_id = ATOMIC_VAR_INIT(0);
 atomic_int producer_id = ATOMIC_VAR_INIT(0);
 
+void find_placement(int client_id, int spot_size, int lease_time);
 
 void time_stamp(int id, int i){
 	gettimeofday(&ts[id][i], NULL);
@@ -77,6 +81,10 @@ uint32_t time_cal(int id, int start, int end) {
 int cmp(const void *a,const void *b) {
     return(*(uint32_t *)a-*(uint32_t *)b);
 }
+
+int comparator(const void* p, const void* q) { 
+	return ((struct producer_info_t*)p)->available_slabs < ((struct producer_info_t*)q)->available_slabs; 
+}  
 
 //the thread function
 void *connection_handler(void *);
@@ -118,6 +126,15 @@ void send_register_ack(int sock, int id) {
 	write(sock, ack_msg, sizeof(ack_msg));
 }
 
+void send_assignment_msg(int id, char* msg, int role) {
+    if(role == PRODUCER){
+    	write(producer_list[id].sock, msg, sizeof(msg));
+    }
+    else if(role == CONSUMER){
+        write(consumer_list[id].sock, msg, sizeof(msg));
+    }
+}
+
 void send_producer_ready_msg(int producer_id, int consumer_id) {
 	char msg[200];
 	sprintf(msg, "%d,%d,%d", PRODUCER_READY, producer_id, consumer_id);
@@ -130,6 +147,8 @@ void register_client(char* ip, int port, int role, int sock) {
         memcpy(producer_list[p_id].ip, ip, sizeof(ip));
         producer_list[p_id].port = port;
         producer_list[p_id].id = p_id;
+        producer_list[p_id].nslabs = 0;
+        producer_list[p_id].available_slabs = 0;
         producer_list[p_id].sock = sock;
         send_register_ack(sock, p_id);
     }
@@ -145,7 +164,7 @@ void register_client(char* ip, int port, int role, int sock) {
 }
 
 void handle_message(char* msg, int sock) {
-	int type, port, spot_size, lease_time, client_id;
+	int type, port, spot_size, lease_time, client_id, nslab, available_slab;
     int producer_id, consumer_id;
 	char ip[200], role[10];
 	
@@ -155,16 +174,22 @@ void handle_message(char* msg, int sock) {
 		case PRODUCER_REG:
 			ip_parser(msg, ip, &port);
 			printf("Message type: %d, ip: %s, port: %d\n", type, ip, port);
+            register_client(ip, port, PRODUCER, sock);
 			break;
 		case CONSUMER_REG:
 			ip_parser(msg, ip, &port);
 			printf("Message type: %d, ip: %s, port: %d\n", type, ip, port);
 			register_client(ip, port, CONSUMER, sock);
 			break;
+        case PRODUCER_AVAILABILITY:
+            sscanf(msg, "%d,%d,%d,%d", &type, &producer_id, &available_slab, &nslab);
+            producer_list[producer_id].nslabs = nslab;
+            producer_list[producer_id].available_slabs = available_slab;
+            break;
 		case SPOT_REQUEST:
 			sscanf(msg, "%d,%d,%d,%d", &type, &client_id, &spot_size, &lease_time);
 			printf("Message type: %d, client id: %d, spot size: %d, lease time:%d\n", type, client_id, spot_size, lease_time);
-            //TODO: find producer map
+            find_placement(client_id, spot_size, lease_time);
 			break;
         case PRODUCER_READY:
             sscanf(msg, "%d,%d,%d", &type, &producer_id, &consumer_id);
@@ -174,6 +199,51 @@ void handle_message(char* msg, int sock) {
         default:
             break;
 	}
+}
+
+void find_placement(int consumer_id, int spot_size, int lease_time) {
+    //TODO: make thread-safe
+    int i, count = 0, allocated = 0, p_id, p_count = 0;
+    struct producer_info_t temp_producers[MAX_PRODUCER + 2];
+
+    for(i = 0, count =0; i<MAX_PRODUCER; i++) {
+        if(producer_list[i].available_slabs != 0) {
+            memcpy(&temp_producers[count], &producer_list[i], sizeof(struct producer_info_t));
+            count++;
+        }
+    }
+
+    qsort(temp_producers, count, sizeof(struct producer_info_t), comparator);
+
+    for(i=0; i< count && allocated < spot_size; i++) {
+        char producer_assignment[1024], consumer_assignment[1024];
+        int has_picked = 0, p_alloc = 0;
+
+        p_id = temp_producers[i].id;
+        if(temp_producers[i].available_slabs >= (spot_size-allocated)) {
+            p_alloc = spot_size-allocated;
+            producer_list[p_id].available_slabs = MAX(0, temp_producers[i].available_slabs - p_alloc);
+            allocated += p_alloc;
+            has_picked = 1;
+        }
+        else {
+            p_alloc = spot_size - (temp_producers[i].available_slabs - MIN_FREE);
+            if(p_alloc >= 0) {
+                producer_list[p_id].available_slabs = MAX(0, temp_producers[i].available_slabs - p_alloc);
+                allocated += p_alloc;
+                has_picked = 1;
+            }
+        }
+
+        if(has_picked == 1) {
+            p_count++;
+            //<msg_type>,<consumer_count>,<ip:port:slab_size:id>, ...
+            sprintf(producer_assignment, "%d,%d,%s:%d:%d:%d", SPOT_ASSIGNMENT_PRODUCER, 1, consumer_list[consumer_id].ip, consumer_list[consumer_id].port, p_alloc, consumer_list[consumer_id].id);
+            sprintf(consumer_assignment, "%d,%d,%s:%d:%d:%d", SPOT_ASSIGNMENT_CONSUMER, 1, producer_list[p_id].ip, producer_list[p_id].port, p_alloc, producer_list[p_id].id);
+            send_assignment_msg(p_id, producer_assignment, PRODUCER);
+            send_assignment_msg(consumer_id, consumer_assignment, CONSUMER);
+        }
+    }
 }
  
 int main(int argc , char *argv[]){

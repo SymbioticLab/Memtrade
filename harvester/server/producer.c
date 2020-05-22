@@ -55,9 +55,11 @@ struct {
 	struct consumer_info_t consumer_list[MAX_CONSUMER + 2];
 } producer;
 
+int nslab, available_slab;
+
 void portal_parser(char* msg) {
 	//portal format 1,2,192.168.0.12:8000:10:1,192.168.0.11:9400:20
-	//<msg_type>,<producer_count>,<ip:port:slab_size:id>, ...
+	//<msg_type>,<consumer_count>,<ip:port:slab_size:id>, ...
 
 	char* ptr = msg, s[] = ",:", *addr;
 	char* token = strtok(ptr, s);
@@ -102,6 +104,12 @@ void send_registration_msg() {
 	write(broker.sock, msg, sizeof(msg));
 }
 
+void send_producer_availability_msg(){
+	char msg[200];
+	sprintf(msg, "%d,%d,%d,%d",PRODUCER_AVAILABILITY, producer.id, available_slab, nslab);
+	write(broker.sock, msg, sizeof(msg));
+}
+
 void send_producer_ready_msg(int consumer_id) {
 	char msg[200];
 	sprintf(msg, "%d,%d,%d", PRODUCER_READY, producer.id, consumer_id);
@@ -115,7 +123,11 @@ void run_spot_manager(int consumer_id) {
 		send_producer_ready_msg(consumer_id);
 	}
 	else {
-		//TODO: run redis
+		char redis_cmd[400];
+		sprintf(redis_cmd, "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 && /newdir/spot/redis/src/redis-server --bind %s --port %d --save \"\"", producer.ip, producer.port);
+
+		FILE* _pipe = popen(redis_cmd, "r");
+		//TODO: check redis status from the _pipe
 		producer.consumer_list[consumer_id].manager_state = RUNNING;
 		send_producer_ready_msg(consumer_id);
 	}
@@ -133,6 +145,7 @@ void handle_message(char* msg) {
 		case REGISTRATION_ACK:
 			sscanf(msg, "%d,%d", &type, &producer.id);
 			printf("Message type: %d, id at broker: %d\n", type, producer.id);
+			send_producer_availability_msg();
 			break;
 		case SPOT_ASSIGNMENT_PRODUCER:
 			portal_parser(msg);
@@ -166,6 +179,8 @@ void init() {
 		producer.consumer_list[i].nslabs = 0;
 		producer.consumer_list[i].manager_state = STOP;
 	}
+	nslab = 40;
+	available_slab = 20;
 }
 
 int main(int argc, char *argv[]) { 
