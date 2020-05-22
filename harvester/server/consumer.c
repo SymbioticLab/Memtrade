@@ -9,7 +9,7 @@
 #define BROKER_IP "128.105.144.197"
 #define BROKER_PORT 9700 
 #define CONSUMER_IP "128.105.144.197"
-#define CONSUMER_PORT 9702 
+#define CONSUMER_PORT 9704 
 #define MAX_CLIENT 128
 #define MAX_PRODUCER 128
 #define PAGE_SIZE 4096
@@ -147,13 +147,20 @@ void handle_message(char* msg) {
 }
 
 void run_consumer_app(int producer_id) {
-	char *consumer_cmd;
-	//TODO: run the benchmark
+	//TODO: add consumer vs producer redis address
+	char consumer_cmd[400];
+	sprintf(consumer_cmd, "cd /newdir/spot/YCSB && ./bin/ycsb load redis -s -P workloads/workloada -p \"redis.consumer_host=127.0.0.1\" -p \"redis.consumer_port=6379\"  -p \"redis.host=%s\" -p \"redis.port=%d\" 2>&1 | tee /newdir/ycsb.txt", consumer.producer_list[producer_id].ip, consumer.producer_list[producer_id].port);
+
+	printf("%s\n", consumer_cmd);
+	FILE* _pipe = popen(consumer_cmd, "r");
+	//TODO: check the status of the application from the _pipe
 }
 
 void run_consumer_redis() {
-	char *redis_cmd;
-	//TODO: run local redis
+	char *redis_cmd = "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 && /newdir/spot/redis/src/redis-server /newdir/spot/redis/redis.conf";
+
+	FILE* _pipe = popen(redis_cmd, "r");
+	//TODO: check redis status from the _pipe
 }
 
 void init() {
@@ -185,6 +192,8 @@ int main(int argc, char *argv[]) {
 	int i, len, opt; 
 	struct sockaddr_in serv_addr; 
 	char buffer[BUFFER_SIZE] = {0}; 
+
+	init();
 
 	while ((opt = getopt(argc, argv, "hb:p:c:q:s:t")) != -1) {
 		switch (opt) {
