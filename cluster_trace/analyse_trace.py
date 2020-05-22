@@ -279,6 +279,129 @@ def machine_usage(time_limit):
 						
 	return;
 
+def m_usage(time_limit):
+	files = sorted(get_file_names(TASK_USAGE));
+	usage_count = 0;
+	start_time = 0;
+	raw_time = 0;
+
+	bucket_length = 30*24*6;
+	bucket_size = 60*10*1000000;
+
+	cpu_bucket = [0]*(bucket_length);
+	memory_bucket = [0]*(bucket_length);
+
+	fieldnames = ['time', 'machine', 'cpu', 'assigned mem', 'file cache', 'total cache', 'max mem', 'total mem', 'disk'];
+
+	for filename in files:
+			print("reading data from %s" % filename);
+			file_path = path.join(path.join(TRACE_DIR, TASK_USAGE), filename);
+			with open(file_path) as csv_file:
+				csv_reader = csv.reader(csv_file, delimiter=' ');
+				for row in csv_reader:
+					#print(row);
+					splits = row[0].split(",");
+					raw_time = (int)(splits[task_usage.START_TIME.value]);
+					time = (int)((int)(splits[task_usage.START_TIME.value])/bucket_size);
+					jobid = splits[task_usage.JOB_ID.value];
+					taskid = splits[task_usage.TASK_ID.value];
+					machineid = splits[task_usage.MACHINE_ID.value];
+
+					if start_time == 0 :
+						start_time = raw_time;
+						print("start time: {0}".format(start_time));
+
+					cpu_bucket[time] = max(cpu_bucket[time], (float) (splits[task_usage.CPU_USAGE.value]));
+					memory_bucket[time] = max(memory_bucket[time], (float) (splits[task_usage.ASSIGNED_MEMORY.value]));
+
+					usage_count = usage_count + 1;
+
+					if usage_count % 100000 == 0:
+						print("read {0} rows, actual time {1}, elapsed {2}".format(usage_count, raw_time, (raw_time-start_time)/1000000));
+
+					if time_limit != -1 and (raw_time - start_time)/1000000 > time_limit :
+						break;
+			
+			if time_limit != -1 and (raw_time - start_time)/1000000 > time_limit:
+				break;
+
+	print("read {0} rows, time : {1}".format(usage_count, raw_time));
+	
+	machine_filepath = path.join(path.join(TRACE_DIR, MACHINE_USAGE), "cluster_cpu_mem.csv" );
+	with open(machine_filepath, mode='w') as csv_file:
+		writer = csv.DictWriter(csv_file, fieldnames=["time", "cpu", "mem"]);
+		writer.writeheader();
+		
+		for t in range(bucket_length):
+			if(cpu_bucket[t] != 0 or memory_bucket[t] != 0):
+				row = {"time": t, "cpu": cpu_bucket[t], "mem": memory_bucket[t]};
+				writer.writerow(row);
+						
+	return;
+
+def cpu_usage(record_limit):
+	files = sorted(get_file_names(MACHINE_USAGE));
+	machine_count = 0;
+	bucket_length = 30;
+	bucket_size = 24*60;
+
+	cluster = {};
+
+	for filename in files:
+		#print("reading data from %s" % filename);
+		file_path = path.join(path.join(TRACE_DIR, MACHINE_USAGE), filename);
+		
+		if "machine_usage_" not in file_path:
+			continue;
+
+		with open(file_path) as csv_file:
+			csv_reader = csv.reader(csv_file, delimiter=',');
+			
+			cpu_bucket = [0]*(bucket_length);
+			record_bucket = [0]*(bucket_length);
+			line = 0;
+			machine_count = machine_count + 1;
+
+			if record_limit != -1 and record_limit < machine_count:
+				break; 
+
+			if machine_count%100 == 0:
+				print("read {0} files, {1:.2f}% done".format(machine_count, machine_count*100/len(files)));
+			
+			if machine_count not in cluster:
+				cluster[machine_count] = {"cpu": [], "avg": []};
+
+			for row in csv_reader:
+				line = line + 1;
+			
+				if line == 1:
+					continue;
+		
+				time = (int)(row[0]);
+				cpu = (float)(row[2]);
+
+				idx = (int)(time/bucket_size);
+				cpu_bucket[idx] = cpu_bucket[idx] + cpu;
+				record_bucket[idx] = record_bucket[idx] + 1;
+		
+			for i in range(bucket_length):
+				if record_bucket[i] == 0:
+					break;
+				cluster[machine_count]["cpu"].append(cpu_bucket[i]);
+				cluster[machine_count]["avg"].append(cpu_bucket[i]/record_bucket[i]);
+
+	total_machine = len(cluster);
+	cpu_bucket = [0]*(bucket_length);
+
+	for day in range(bucket_length):
+		total_cpu = 0;
+		total_record = 0;
+		for machine in cluster:
+			if len(cluster[machine]["avg"]) > day and cluster[machine]["avg"][day] != 0:
+				total_cpu = total_cpu + cluster[machine]["avg"][day];
+				total_record = total_record + 1;
+		cpu_bucket[day] = total_cpu/total_record;
+		print(day, cpu_bucket[day]);
 
 def main():
 	myargvs = process_argv(sys.argv);
@@ -298,6 +421,8 @@ def main():
 
 #	task_wait_time(record_limit);
 #	availability(record_limit);
-	machine_usage(record_limit);
+#	machine_usage(record_limit);
+	m_usage(record_limit);
+	
 if __name__ == "__main__":
 	main();

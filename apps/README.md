@@ -17,6 +17,7 @@
 * [Miscellaneous](#miscellaneous)
     * [Call Graph Latency Breakdown](#call-graph-latency-breakdown)
     * [Compile Linux from Source Code](#compile-linux-from-source-code)
+    * [Upgrade Kernel to 4.11](#upgrade-kernel-to-4.11)
 
 ## Workload
 
@@ -448,3 +449,15 @@ This [repo](https://github.com/chetui/CloudSuiteTutorial/tree/master/web_serving
     make modules_install
     make install && reboot
     ```
+#### Upgrade Kernel to 4.11
+```sh
+cd /tmp/
+
+wget http://kernel.ubuntu.com/~kernel-ppa/mainline/v4.11/linux-headers-4.11.0-041100_4.11.0-041100.201705041534_all.deb
+
+wget http://kernel.ubuntu.com/~kernel-ppa/mainline/v4.11/linux-headers-4.11.0-041100-generic_4.11.0-041100.201705041534_amd64.deb
+
+wget http://kernel.ubuntu.com/~kernel-ppa/mainline/v4.11/linux-image-4.11.0-041100-generic_4.11.0-041100.201705041534_amd64.deb
+
+sudo dpkg -i *.deb
+```
