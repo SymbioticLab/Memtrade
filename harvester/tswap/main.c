@@ -16,7 +16,7 @@
 #include <linux/frontswap.h>
 #include <linux/delay.h>
 
-#define DEFAULT_QUARANTINE_TIME 480
+#define DEFAULT_QUARANTINE_TIME 300
 #define PREFETCH_BUFFER_SIZE (1 << (34 - PAGE_SHIFT))
 #define PREFETCH_GRACE_TIME 600
 

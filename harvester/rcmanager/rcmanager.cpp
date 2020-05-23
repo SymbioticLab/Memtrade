@@ -49,8 +49,8 @@ constexpr long g_min_cgroup_limit = 0;
 
 constexpr long g_promo_rate_mi_threshold = (4 << 20);
 constexpr long g_disk_promo_rate_mi_threshold = (64 << 10);
-constexpr long g_promo_rate_bottom_line_threshold = (256 << 20);
-constexpr long g_disk_promo_rate_bottom_line_threshold = (64 << 20);
+constexpr long g_promo_rate_bottom_line_threshold = (512 << 20);
+constexpr long g_disk_promo_rate_bottom_line_threshold = (128 << 20);
 constexpr long g_promo_bottom_line_ttl = 900;
 constexpr long g_promo_rate_prefetch_threshold = (512 << 20);
 constexpr long g_disk_promo_rate_prefetch_threshold = (128 << 20);
@@ -67,7 +67,7 @@ constexpr long g_dec_sleep_time = 5;
 constexpr long g_warrior_sleep_time = 1;
 constexpr long g_logging_sleep_time = 1;
 
-constexpr long g_touch_rss_bottom_line_ttl = 2.5 * 480;  /* depends on quarantine time */
+constexpr long g_touch_rss_bottom_line_ttl = 3 * 300;  /* depends on quarantine time */
 constexpr long g_touch_rss_bottom_line_threshold = 2 * g_ad;
 constexpr long g_overflow_threshold = g_unit_size;
 

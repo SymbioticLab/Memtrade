@@ -62,7 +62,7 @@ constexpr long g_unit_size = (64 << 20);
 constexpr long g_min_cgroup_limit = 0;
 
 constexpr float g_performance_drop_mi_threshold = 3;
-constexpr float g_performance_drop_bottom_line_threshold = 12;
+constexpr float g_performance_drop_bottom_line_threshold = 20;
 constexpr float g_performance_drop_bottom_line_ttl = 900;
 constexpr float g_performance_drop_prefetch_threshold = 20;
 constexpr long g_performance_drop_prefetch_size = (1 << 25);
@@ -79,8 +79,8 @@ constexpr long g_warrior_sleep_time = 1;
 constexpr long g_logging_sleep_time = 1;
 
 constexpr long g_moving_max_window_size = 1800;
-constexpr long g_max_performance_sample_window_size = 510;
-constexpr long g_touch_rss_bottom_line_ttl = 2.5 * 480;  /* depends on quarantine time */
+constexpr long g_max_performance_sample_window_size = 600;
+constexpr long g_touch_rss_bottom_line_ttl = 3 * 300;  /* depends on quarantine time */
 constexpr long g_touch_rss_bottom_line_threshold = 2 * g_ad;
 constexpr long g_overflow_threshold = g_unit_size;
 
