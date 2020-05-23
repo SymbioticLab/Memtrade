@@ -211,7 +211,7 @@ long get_cgroup_rss(const char *cgroup_name)
 	long value;
 	long rss = 0;
 	while (in >> key >> value) {
-		if (key == "rss" || key == "mapped_file" || key == "cache") {
+		if (key == "total_rss" || key == "total_mapped_file" || key == "total_cache") {
 			rss += value;
 		}
 	}
