@@ -417,6 +417,7 @@ This [repo](https://github.com/chetui/CloudSuiteTutorial/tree/master/web_serving
   ```bash
   git clone https://github.com/yuhong-zhong/streaming-benchmarks.git
   cd streaming-benchmarks
+  g++ atomic_write.cpp -o atomic_write -std=c++14
   ./stream-bench.sh SETUP
   ```
 
@@ -451,6 +452,14 @@ This [repo](https://github.com/chetui/CloudSuiteTutorial/tree/master/web_serving
   ./stream-bench.sh STORM_TEST
   ```
 
+* To get the average task completion time with the latest 10 min window, run:
+
+  ```bash
+  # make sure Storm is running
+  ./storm-stat.sh
+  # Then the number will be writen to /tmp/storm (in ms)
+  ```
+
 Yahoo Streaming Benchmark can also run the benchmark on Apache Spark and Apache Flink. However, we haven't try them yet.
 
 ## TensorFlow
@@ -472,8 +481,9 @@ Yahoo Streaming Benchmark can also run the benchmark on Apache Spark and Apache 
 * Clone the workload repo:
 
   ```bash
-  git clone https://github.com/CS-W4121/HW3.git
+  git clone https://github.com/yuhong-zhong/HW3.git
   cd HW3/cifar10_estimator
+  g++ atomic_write.cpp -o atomic_write -std=c++14
   ```
 
 * Create dataset:
@@ -489,6 +499,9 @@ Yahoo Streaming Benchmark can also run the benchmark on Apache Spark and Apache 
                          --job-dir=/tmp/cifar10 \
                          --num-gpus=0 \
                          --train-steps=10000
+  # will run for a few hours
+  
+  # number of sample processed per second will be reported to /tmp/tf
   ```
 
 ## Snowset
