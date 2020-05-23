@@ -58,22 +58,23 @@ long long get_total_memory_size() {
         exit(1);
     }
     char key[512], unit[4];
-    long size, shift;
-    while( fscanf(mem_info, "%s %ld %s", key, &size, unit) != EOF ) {
+    long shift;
+    long long size;
+    while( fscanf(mem_info, "%s %lld %s", key, &size, unit) != EOF ) {
 //        printf("%s %ld %s\n", key, size, unit);
         if(strcmp(key, "MemTotal:") == 0 ) {
             switch (unit[0]) {
             case 'k':
             case 'K':
-                shift = 1000;
+                shift = 10;
                 break;
             case 'm':
             case 'M':
-                shift = 1000000;
+                shift = 20;
                 break;
             case 'g':
             case 'G':
-                shift = 1000000000;
+                shift = 30;
                 break;
             default:
                 shift = 1;
@@ -87,7 +88,46 @@ long long get_total_memory_size() {
     size = 0;
 out:
     fclose(mem_info);
-    return size * shift;
+    return size << shift;
+}
+
+long long get_free_memory_size() {
+    FILE* mem_info = fopen("/proc/meminfo", "r");
+    if (!mem_info) {
+        printf("cannot open meminfo file\n");
+        exit(1);
+    }
+    char key[512], unit[4];
+    long size, shift;
+    while( fscanf(mem_info, "%s %ld %s", key, &size, unit) != EOF ) {
+//        printf("%s %ld %s\n", key, size, unit);
+        if(strcmp(key, "MemFree:") == 0 ) {
+            switch (unit[0]) {
+            case 'k':
+            case 'K':
+                shift = 10;
+                break;
+            case 'm':
+            case 'M':
+                shift = 20;
+                break;
+            case 'g':
+            case 'G':
+                shift = 30;
+                break;
+            default:
+                shift = 1;
+            }
+
+//            printf("total memory size: %lld bytes\n", size * shift);
+            goto out;
+        }
+    }
+    printf("cannot read meminfo file\n");
+    size = 0;
+out:
+    fclose(mem_info);
+    return size << shift;
 }
 
 long long get_cgroup_rss(char* cgroup_name) {
@@ -105,7 +145,7 @@ long long get_cgroup_rss(char* cgroup_name) {
     long value, rss = 0;
 
     while( fscanf(cgroup_stat, "%s %ld", key, &value) != EOF) {
-        if( (strcmp(key, "rss") == 0) || (strcmp(key, "mapped_file") == 0) || (strcmp(key, "cache") == 0) ) {
+        if( (strcmp(key, "total_rss") == 0) || (strcmp(key, "total_mapped_file") == 0) || (strcmp(key, "total_cache") == 0) ) {
             rss += value;
         }
     }
@@ -133,9 +173,13 @@ long long get_tswap_memory_size() {
     return nr_memory_page << PAGE_SHIFT;
 }
 
-long long get_available_memory() {
-//    printf("total memory: %lld, rss: %lld, tswap: %lld, available: %lld\n",g_total_memory, get_cgroup_rss(g_cgroup_name), get_tswap_memory_size());
-    return g_total_memory - get_cgroup_rss(g_cgroup_name) - get_tswap_memory_size();
+// long long get_available_memory() {
+// //    printf("total memory: %lld, rss: %lld, tswap: %lld, available: %lld\n",g_total_memory, get_cgroup_rss(g_cgroup_name), get_tswap_memory_size());
+//     return g_total_memory - get_cgroup_rss(g_cgroup_name) - get_tswap_memory_size();
+// }
+
+long long get_available_memory(const char *cgroup_name) {
+    return get_free_memory_size() + get_cgroup_rss(cgroup_name);
 }
 
 long update_est_available_memory(long available_memory) {
