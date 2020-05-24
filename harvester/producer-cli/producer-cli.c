@@ -97,7 +97,7 @@ int main (int argc, char **argv) {
     long long available_memory, cur_est_available_memory, evict_count, diff;
 
     while(1) {
-        available_memory = get_available_memory();
+        available_memory = get_available_memory(g_cgroup_name);
         cur_est_available_memory = update_est_available_memory(available_memory);
 //        printf("available memory: %lld, estimated: %lld, harvested: %lld\n", available_memory, cur_est_available_memory, g_harvested_memory);
         if (cur_est_available_memory - g_harvested_memory < g_evict_threshold) {

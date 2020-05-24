@@ -67,6 +67,8 @@ struct consumer_info_t consumer_list[MAX_CONSUMER + 2];
 atomic_int consumer_id = ATOMIC_VAR_INIT(0);
 atomic_int producer_id = ATOMIC_VAR_INIT(0);
 
+pthread_mutex_t lock; 
+
 void find_placement(int client_id, int spot_size, int lease_time);
 
 void time_stamp(int id, int i){
@@ -205,6 +207,8 @@ void handle_message(char* msg, int sock) {
 
 void find_placement(int consumer_id, int spot_size, int lease_time) {
     //TODO: make thread-safe
+    pthread_mutex_lock(&lock);
+    
     int i, count = 0, allocated = 0, p_id, p_count = 0;
     struct producer_info_t temp_producers[MAX_PRODUCER + 2];
 
@@ -247,6 +251,7 @@ void find_placement(int consumer_id, int spot_size, int lease_time) {
 		printf("producer: %s consumer: %s\n", producer_assignment, consumer_assignment);
         }
     }
+    pthread_mutex_unlock(&lock);
 }
  
 int main(int argc , char *argv[]){

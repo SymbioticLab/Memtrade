@@ -1,59 +1,13 @@
-// Client side C/C++ program to demonstrate Socket programming 
 #include <stdio.h> 
 #include <sys/socket.h> 
 #include <stdlib.h> 
 #include <netinet/in.h> 
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <stdint.h>
 
-#define BROKER_IP "128.105.144.197"
-#define BROKER_PORT 9700 
-#define PRODUCER_IP "128.105.144.197"
-#define PRODUCER_PORT 9702 
-#define MAX_CONSUMER 128
-#define PAGE_SIZE 4096
-#define BUFFER_SIZE 4096
-#define SPOT_SIZE 5 // interms of GB
-#define LEASE_TIME 1 // interms of hour
-
-enum msg_type {
-	CONNECTION_ACK = 0,
-	PRODUCER_REG = 1,
-	CONSUMER_REG = 2,
-	REGISTRATION_ACK = 3,
-    PRODUCER_AVAILABILITY = 4,
-	SPOT_REQUEST = 5,
-	SPOT_ASSIGNMENT_CONSUMER = 6,
-    SPOT_ASSIGNMENT_PRODUCER = 7,
-	PRODUCER_READY = 8
-};
-
-enum manager_state {
-	STOP = 0,
-	RUNNING = 1
-};
-
-struct consumer_info_t {
-	char ip[200];
-	int port;
-	int id;
-	int nslabs;
-	int manager_state;
-};
-
-struct {
-	char ip[200];
-	int port;
-	int sock;
-} broker;
-
-struct {
-	char ip[200];
-	int port;
-	int id;
-	int consumer_count;
-	struct consumer_info_t consumer_list[MAX_CONSUMER + 2];
-} producer;
+#include "producer.h"
 
 int nslab, available_slab;
 
@@ -105,7 +59,7 @@ void send_registration_msg() {
 
 void send_producer_availability_msg(){
 	char msg[200];
-	sprintf(msg, "%d,%d,%d,%d",PRODUCER_AVAILABILITY, producer.id, available_slab, nslab);
+	sprintf(msg, "%d,%d,%d,%d",PRODUCER_AVAILABILITY, producer.id, (int)(producer.harvested_memory/g_node_size), (int)(producer.total_memory/g_node_size));
 	write(broker.sock, msg, sizeof(msg));
 }
 
@@ -123,7 +77,7 @@ void run_spot_manager(int consumer_id) {
 	}
 	else {
 		char redis_cmd[400];
-		sprintf(redis_cmd, "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 && /newdir/spot/redis/src/redis-server --bind %s --port %d --save \"\"", producer.ip, producer.port);
+		sprintf(redis_cmd, "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 && cgexec -g memory:%s /newdir/spot/redis/src/redis-server --bind %s --port %d --save \"\"", producer.cgroup_name, producer.ip, producer.consumer_list[consumer_id].manager_port);
 		printf("%s", redis_cmd);
 		FILE* _pipe = popen(redis_cmd, "r");
 		//TODO: check redis status from the _pipe
@@ -139,12 +93,13 @@ void handle_message(char* msg) {
 	printf("Message type: %d, %s\n", type, msg);
 	switch (type) {
 		case CONNECTION_ACK:
+			producer.status = CONNECTED;
 			send_registration_msg();
 			break;
 		case REGISTRATION_ACK:
 			sscanf(msg, "%d,%d", &type, &producer.id);
 			printf("Message type: %d, id at broker: %d\n", type, producer.id);
-			send_producer_availability_msg();
+			producer.status = REGISTERED;
 			break;
 		case SPOT_ASSIGNMENT_PRODUCER:
 			portal_parser(msg);
@@ -159,56 +114,61 @@ void handle_message(char* msg) {
 	}
 }
 
-void usage() {
-	printf("Usage ./producer [-b broker-ip] [-p broker-port] [-c producer-ip] [-q producer-port]\n");
-	printf("Default broker ip:port is %s:%d, producer ip:port is %s:%d\n", BROKER_IP, BROKER_PORT, PRODUCER_IP, PRODUCER_PORT);
-	printf("\n");
+void harvest_decision(){
+	long long available_memory, cur_est_available_memory, evict_count, diff;
+
+    while(1) {
+        available_memory = get_available_memory();
+        cur_est_available_memory = update_est_available_memory(available_memory);
+//        printf("available memory: %lld, estimated: %lld, harvested: %lld\n", available_memory, cur_est_available_memory, g_harvested_memory);
+        if (cur_est_available_memory - producer.harvested_memory < g_evict_threshold) {
+            diff = g_evict_threshold - (cur_est_available_memory - producer.harvested_memory);
+            evict_count = 0;
+
+            while (diff > 0 && producer.harvested_memory > MIN_SPOT_SIZE) {
+                producer.harvested_memory -= g_node_size;
+                diff = g_evict_threshold - (cur_est_available_memory - producer.harvested_memory);
+                ++evict_count;
+            }
+
+            producer.harvested_memory = MAX(producer.harvested_memory, MIN_SPOT_SIZE);
+			
+			if(producer.status == REGISTERED)
+				send_producer_availability_msg();
+			//TODO: add concrete evict/resize logic
+            //set_spot_size(producer.harvested_memory, producer_server);
+
+            printf("EVICT | available memory: %lld MB ", (available_memory >> 20));
+            printf("estimated available memory: %lld MB ", (cur_est_available_memory >> 20));
+            printf("allocated memory: %lld MB ", (producer.harvested_memory >> 20));
+            printf("evicted: %lld MB\n", ((evict_count * g_node_size) >> 20));
+        }
+        else if (cur_est_available_memory - producer.harvested_memory > g_alloc_threshold) {
+            producer.harvested_memory += g_node_size;
+
+			//TODO: add concrete evict/resize logic
+            //set_spot_size(producer.harvested_memory, producer_server);
+			if(producer.status == REGISTERED)
+				send_producer_availability_msg();
+
+            printf("ALLOC | available memory: %lld MB ", (available_memory >> 20));
+            printf("estimated available memory: %lld MB ", (cur_est_available_memory >> 20));
+            printf("allocated memory: %lld MB ", (producer.harvested_memory >> 20));
+        } 
+        else {
+            printf("SKIP  | available memory: %lld MB ", (available_memory >> 20));
+            printf("estimated available memory: %lld MB ", (cur_est_available_memory >> 20));
+            printf("allocated memory: %lld MB\n", (producer.harvested_memory >> 20));
+        }
+        usleep(SLEEP_TIME);
+    }
 }
 
-void init() {
-	int i; 
-
-	strcpy(broker.ip, BROKER_IP);
-	broker.port = BROKER_PORT;
-	strcpy(producer.ip, PRODUCER_IP);
-	producer.port = PRODUCER_PORT;
-
-	producer.consumer_count = MAX_CONSUMER;
-	for(i=0; i<producer.consumer_count; i++) {
-		producer.consumer_list[i].nslabs = 0;
-		producer.consumer_list[i].manager_state = STOP;
-	}
-	nslab = 40;
-	available_slab = 20;
-}
-
-int main(int argc, char *argv[]) { 
+void init_network(){
 	struct sockaddr_in address; 
-	int i, len, opt; 
 	struct sockaddr_in serv_addr; 
 	char buffer[BUFFER_SIZE] = {0}; 
-
-	init();
-
-	while ((opt = getopt(argc, argv, "hb:p:c:q")) != -1) {
-		switch (opt) {
-		case 'h':
-			usage();
-			return 0;
-		case 'b':
-			strcpy(broker.ip, optarg);
-			break;
-		case 'p':
-			broker.port = atoi(optarg);
-			break;
-		case 'c':
-			strcpy(producer.ip, optarg);
-			break;
-		case 'q':
-			producer.port = atoi(optarg);
-			break;
-		}
-	}
+	int i, len;
 
 	if ((broker.sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) { 
 		printf("\n Socket creation error \n"); 
@@ -235,5 +195,70 @@ int main(int argc, char *argv[]) {
 		//message received from the server
 		handle_message(buffer);
 	}
+}
+
+void init() {
+	int i; 
+
+	strcpy(broker.ip, BROKER_IP);
+	broker.port = BROKER_PORT;
+	strcpy(producer.ip, PRODUCER_IP);
+	producer.port = PRODUCER_PORT;
+	producer.status = INIT;
+
+	producer.consumer_count = MAX_CONSUMER;
+	for(i=0; i<producer.consumer_count; i++) {
+		producer.consumer_list[i].nslabs = 0;
+		producer.consumer_list[i].manager_state = STOP;
+		producer.consumer_list[i].manager_port = MANAGER_PORT_INIT + i*2;
+	}
+
+	producer.total_memory = get_total_memory_size();
+	producer.harvested_memory = 0;
+	nslab = 40;
+	available_slab = 20;
+}
+
+void usage() {
+	printf("Usage ./producer [-b broker-ip] [-p broker-port] [-c producer-ip] [-q producer-port] [-g cgroup-name]\n");
+	printf("Default broker ip:port is %s:%d, producer ip:port is %s:%d\n", BROKER_IP, BROKER_PORT, PRODUCER_IP, PRODUCER_PORT);
+	printf("\n");
+}
+
+int main(int argc, char *argv[]) { 
+	int opt; 
+	pthread_t harvest_thread;
+	
+	init();
+
+	while ((opt = getopt(argc, argv, "hb:p:c:q")) != -1) {
+		switch (opt) {
+		case 'h':
+			usage();
+			return 0;
+		case 'b':
+			strcpy(broker.ip, optarg);
+			break;
+		case 'p':
+			broker.port = atoi(optarg);
+			break;
+		case 'c':
+			strcpy(producer.ip, optarg);
+			break;
+		case 'q':
+			producer.port = atoi(optarg);
+			break;
+		case 'g':
+			producer.cgroup_name = optarg;
+			break;
+		default:
+			break;
+		}
+	}
+
+	pthread_create(&harvest_thread, NULL, (void *)harvest_decision, NULL);
+
+	init_network();
+
 	return 0; 
-} 
+}
