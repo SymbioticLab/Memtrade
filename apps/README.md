@@ -98,10 +98,17 @@
     ```
 - Run MemCached
     ```sh
-    cgcreate -g memory:memcached
-    echo 4465M > /sys/fs/cgroup/memory/memcached/memory.limit_in_bytes
-    /etc/init.d/memcached stop
-    cgexec -g memory:memcached /etc/init.d/memcached start
+    # limit the memory of memcached in 14.04
+    sudo cgcreate -g memory:memcached
+    sudo bash -c "echo 4465M > /sys/fs/cgroup/memory/memcached/memory.limit_in_bytes"
+    sudo /etc/init.d/memcached stop
+    sudo cgexec -g memory:memcached /etc/init.d/memcached start
+    
+    #limit the memory of memcached in 16.04 or higher
+    sudo /etc/init.d/memcached stop
+    sudo /etc/init.d/memcached start
+    sudo systemctl set-property memcached.service MemoryLimit=4465M
+    
     cd ./apps/workload/memaslap/
     
     #to run ETC workload
