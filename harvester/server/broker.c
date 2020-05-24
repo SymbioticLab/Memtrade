@@ -177,27 +177,28 @@ void handle_message(char* msg, int sock) {
 	switch (type) {
 		case PRODUCER_REG:
 			ip_parser(msg, ip, &port);
-			printf("Message type: %d, ip: %s, port: %d\n", type, ip, port);
+			printf("Message type: %d (producer-reg), ip: %s, port: %d\n", type, ip, port);
             register_client(ip, port, PRODUCER, sock);
 			break;
 		case CONSUMER_REG:
 			ip_parser(msg, ip, &port);
-			printf("Message type: %d, ip: %s, port: %d\n", type, ip, port);
+			printf("Message type: %d (consumer-reg), ip: %s, port: %d\n", type, ip, port);
 			register_client(ip, port, CONSUMER, sock);
 			break;
         case PRODUCER_AVAILABILITY:
             sscanf(msg, "%d,%d,%d,%d", &type, &producer_id, &available_slab, &nslab);
+	    printf("Message type: %d (producer_availability), id: %d, available: %d, total:%d\n", type, producer_id, available_slab, nslab);
             producer_list[producer_id].nslabs = nslab;
             producer_list[producer_id].available_slabs = available_slab;
             break;
 		case SPOT_REQUEST:
 			sscanf(msg, "%d,%d,%d,%d", &type, &client_id, &spot_size, &lease_time);
-			printf("Message type: %d, client id: %d, spot size: %d, lease time:%d\n", type, client_id, spot_size, lease_time);
+			printf("Message type: %d (spot-request), client id: %d, spot size: %d, lease time:%d\n", type, client_id, spot_size, lease_time);
             find_placement(client_id, spot_size, lease_time);
 			break;
         case PRODUCER_READY:
             sscanf(msg, "%d,%d,%d", &type, &producer_id, &consumer_id);
-			printf("Message type: %d, from producer: %d to consumer %d\n", type, producer_id, consumer_id);
+			printf("Message type: %d (producer-ready), from producer: %d to consumer %d\n", type, producer_id, consumer_id);
 			send_producer_ready_msg(producer_id, consumer_id);
 			break;
         default:

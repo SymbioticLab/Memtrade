@@ -6,7 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define BROKER_IP "128.105.144.197"
+#define BROKER_IP "192.168.122.91"
 #define BROKER_PORT 9700 
 #define CONSUMER_IP "128.105.144.197"
 #define CONSUMER_PORT 9704 
@@ -123,7 +123,7 @@ void handle_message(char* msg) {
 			break;
 		case REGISTRATION_ACK:
 			sscanf(msg, "%d,%d", &type, &consumer.id);
-			printf("Message type: %d, id at broker: %d\n", type, consumer.id);
+			printf("Message type: %d (register-ack), id at broker: %d\n", type, consumer.id);
 			send_spot_request();
 			break;
 		case SPOT_ASSIGNMENT_CONSUMER:
@@ -135,7 +135,7 @@ void handle_message(char* msg) {
 			}
 		case PRODUCER_READY:
             sscanf(msg, "%d,%d,%d", &type, &producer_id, &consumer_id);
-			printf("Message type: %d, from producer: %d to consumer %d\n", type, producer_id, consumer_id);
+			printf("Message type: %d (producer-ready), from producer: %d to consumer %d\n", type, producer_id, consumer_id);
 			consumer.producer_list[producer_id].manager_state = RUNNING;
 			//TODO: check for the correctness of the remote-local ratio; especially when multiple producers are mapped for a single request 
 			run_consumer_app(producer_id);
@@ -151,14 +151,14 @@ void run_consumer_app(int producer_id) {
 	sprintf(consumer_cmd, "cd /newdir/spot/YCSB && ./bin/ycsb load redis -s -P workloads/workloada -p \"redis.consumer_host=127.0.0.1\" -p \"redis.consumer_port=6379\"  -p \"redis.host=%s\" -p \"redis.port=%d\" 2>&1 | tee /newdir/ycsb.txt", consumer.producer_list[producer_id].ip, consumer.producer_list[producer_id].port);
 
 	printf("%s\n", consumer_cmd);
-	FILE* _pipe = popen(consumer_cmd, "r");
+//	FILE* _pipe = popen(consumer_cmd, "r");
 	//TODO: check the status of the application from the _pipe
 }
 
 void run_consumer_redis() {
 	char *redis_cmd = "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 && /newdir/spot/redis/src/redis-server /newdir/spot/redis/redis.conf";
 	printf("%s\n", redis_cmd);
-	FILE* _pipe = popen(redis_cmd, "r");
+//	FILE* _pipe = popen(redis_cmd, "r");
 	//TODO: check redis status from the _pipe
 }
 

@@ -21,7 +21,7 @@
 // #include <aes.h>
 // #include <adapters/libevent.h>
 
-#define BROKER_IP "128.105.144.197"
+#define BROKER_IP "192.168.122.91"
 #define BROKER_PORT 9700 
 #define PRODUCER_IP "128.105.144.197"
 #define PRODUCER_PORT 9702 
@@ -87,7 +87,7 @@ struct {
 #define CGROUP_PATH_MAX_LEN 256
 #define PAGE_SHIFT 12
 #define MIN_SPOT_SIZE (50l << 20)
-#define SLEEP_TIME 1000000 // in microseconds 1sec = 1000000 us
+#define SLEEP_TIME 60000000 // in microseconds 1sec = 1000000 us
 #define UNUSED(x) ((void)(x))
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))

@@ -79,7 +79,7 @@ void run_spot_manager(int consumer_id) {
 		char redis_cmd[400];
 		sprintf(redis_cmd, "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 && cgexec -g memory:%s /newdir/spot/redis/src/redis-server --bind %s --port %d --save \"\"", producer.cgroup_name, producer.ip, producer.consumer_list[consumer_id].manager_port);
 		printf("%s", redis_cmd);
-		FILE* _pipe = popen(redis_cmd, "r");
+//		FILE* _pipe = popen(redis_cmd, "r");
 		//TODO: check redis status from the _pipe
 		producer.consumer_list[consumer_id].manager_state = RUNNING;
 		send_producer_ready_msg(consumer_id);
@@ -98,7 +98,7 @@ void handle_message(char* msg) {
 			break;
 		case REGISTRATION_ACK:
 			sscanf(msg, "%d,%d", &type, &producer.id);
-			printf("Message type: %d, id at broker: %d\n", type, producer.id);
+			printf("Message type: %d (register-ack), id at broker: %d\n", type, producer.id);
 			producer.status = REGISTERED;
 			break;
 		case SPOT_ASSIGNMENT_PRODUCER:
@@ -182,12 +182,12 @@ void init_network(){
 	// Convert IPv4 and IPv6 addresses from text to binary form 
 	if(inet_pton(AF_INET, broker.ip, &serv_addr.sin_addr)<=0) { 
 		printf("\nInvalid address/ Address not supported \n"); 
-		return -1; 
+		return; 
 	} 
 
 	if (connect(broker.sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) { 
 		printf("\nConnection Failed \n"); 
-		return -1; 
+		return; 
 	} 
 	printf("producer's connection to broker successful\n");
 
