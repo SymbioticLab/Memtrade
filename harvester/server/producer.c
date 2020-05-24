@@ -52,7 +52,7 @@ void portal_parser(char* msg) {
 }
 
 void send_registration_msg() {
-	char msg[200];
+	char msg[300];
 	sprintf(msg, "%d,%s,%d", PRODUCER_REG, producer.ip, producer.port);
 	write(broker.sock, msg, sizeof(msg));
 }
@@ -172,7 +172,7 @@ void init_network(){
 
 	if ((broker.sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) { 
 		printf("\n Socket creation error \n"); 
-		return -1; 
+		return; 
 	} 
 	memset(&serv_addr, '0', sizeof(serv_addr)); 
 
@@ -231,7 +231,7 @@ int main(int argc, char *argv[]) {
 	
 	init();
 
-	while ((opt = getopt(argc, argv, "hb:p:c:q")) != -1) {
+	while ((opt = getopt(argc, argv, "hb:p:c:q:g")) != -1) {
 		switch (opt) {
 		case 'h':
 			usage();

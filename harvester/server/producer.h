@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <assert.h>
 #include <stdatomic.h>
+#include <arpa/inet.h>
 // #include <openssl/rand.h>
 // #include <openssl/sha.h>
 // #include <openssl/evp.h>
@@ -23,7 +24,7 @@
 
 #define BROKER_IP "192.168.122.91"
 #define BROKER_PORT 9700 
-#define PRODUCER_IP "128.105.144.197"
+#define PRODUCER_IP "192.168.122.141"
 #define PRODUCER_PORT 9702 
 #define MANAGER_PORT_INIT 9704 
 #define MAX_CONSUMER 128

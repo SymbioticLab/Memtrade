@@ -5,6 +5,7 @@
 #include <netinet/in.h> 
 #include <string.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 
 #define BROKER_IP "192.168.122.91"
 #define BROKER_PORT 9700 
@@ -101,7 +102,7 @@ void portal_parser(char* msg) {
 }
 
 void send_registration_msg() {
-	char msg[200];
+	char msg[300];
 	sprintf(msg, "%d,%s,%d", CONSUMER_REG, consumer.ip, consumer.port);
 	write(broker.sock, msg, sizeof(msg));
 }
