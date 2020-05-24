@@ -287,9 +287,34 @@
  PARSEC is a collection of parallel programs which are used for performance studies of multiprocessor machines. I did not run this benchmark yet. We can follow this [repo](https://github.com/bamos/parsec-benchmark) to run PARSEC benchmarks.
 ## CloudSuite
 
-I did not configure and run this workload yet. We can follow the official documentation of [web-serving](https://github.com/parsa-epfl/cloudsuite/blob/master/docs/benchmarks/web-serving.md) and [media-streaming](https://github.com/parsa-epfl/cloudsuite/blob/master/docs/benchmarks/media-streaming.md) to evaluate social media and video streaming type services, respectively. 
+* First, setup Cloud Suite Server inside the VM:
 
-This [repo](https://github.com/chetui/CloudSuiteTutorial/tree/master/web_serving) can also be helpful if the official documentation (docer-based deployment) doesn't work.
+  ```bash
+  # Install docker
+  sudo apt-get install -y docker.io
+  
+  # Run MySQL + Memcached + WebServer
+  WEB_SERVER_IP=$( ifconfig  | grep 'inet '| grep -v '127.0.0.1' | cut -d ' ' -f 10 | tail -1)
+  DATABASE_SERVER_IP=$( ifconfig  | grep 'inet '| grep -v '127.0.0.1' | cut -d ' ' -f 10 | tail -1)
+  MEMCACHED_SERVER_IP=$( ifconfig  | grep 'inet '| grep -v '127.0.0.1' | cut -d ' ' -f 10 | tail -1)
+  sudo cgcreate -g memory:app
+  sudo docker run -dt --net=host --name=mysql_server --cgroup-parent=/app/ cloudsuite/web-serving:db_server ${WEB_SERVER_IP}
+  sudo docker run -dt --net=host --name=memcache_server --cgroup-parent=/app/ cloudsuite/web-serving:memcached_server
+  sudo docker run -dt --net=host --name=web_server --cgroup-parent=/app/ cloudsuite/web-serving:web_server /etc/bootstrap.sh ${DATABASE_SERVER_IP} ${MEMCACHED_SERVER_IP}
+  ```
+
+* Then, install and run Cloud Suite Client in the hypervisor:
+
+  ```bash
+  # Install docker
+  sudo apt-get install -y docker.io
+  
+  # Run Cloud Suite Client
+  WEB_SERVER_IP=$(sudo uvt-kvm ip vm1)
+  sudo docker run --net=host --name=faban_client why950708/cloudsuite:faban_client ${WEB_SERVER_IP}
+  
+  # When 1000 users have been generated, the client start to send requests to the server
+  ```
 
 ## YCSB
 
