@@ -232,7 +232,7 @@ long get_cgroup_swap(const char *cgroup_name)
 	string key;
 	long value;
 	while (in >> key >> value) {
-		if (key == "swap") {
+		if (key == "total_swap") {
 			return value;
 		}
 	}
