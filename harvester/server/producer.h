@@ -88,7 +88,7 @@ struct {
 #define CGROUP_PATH_MAX_LEN 256
 #define PAGE_SHIFT 12
 #define MIN_SPOT_SIZE (50l << 20)
-#define SLEEP_TIME 6000000 // in microseconds 1sec = 1000000 us
+#define SLEEP_TIME 60000000 // in microseconds 1sec = 1000000 us
 #define UNUSED(x) ((void)(x))
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
@@ -181,7 +181,7 @@ out:
 
 long long get_cgroup_rss() {
     char cgroup_path[CGROUP_PATH_MAX_LEN];
-#if 0
+#if 1
     sprintf(cgroup_path, "/sys/fs/cgroup/memory/%s/memory.stat", producer.cgroup_name);
 
     FILE* cgroup_stat = fopen(cgroup_path, "r");
@@ -202,7 +202,9 @@ long long get_cgroup_rss() {
 //    printf("rss for %s cgroup: %ld\n", cgroup_name, rss);
     return rss;
 #endif
+#if 0
     return 0;
+#endif
 }
 
 long long get_tswap_memory_size() {
