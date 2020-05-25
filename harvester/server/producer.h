@@ -88,7 +88,7 @@ struct {
 #define CGROUP_PATH_MAX_LEN 256
 #define PAGE_SHIFT 12
 #define MIN_SPOT_SIZE (50l << 20)
-#define SLEEP_TIME 60000000 // in microseconds 1sec = 1000000 us
+#define SLEEP_TIME 6000000 // in microseconds 1sec = 1000000 us
 #define UNUSED(x) ((void)(x))
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))

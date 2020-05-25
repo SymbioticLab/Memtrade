@@ -137,9 +137,9 @@ void send_assignment_msg(int id, char* msg, int role) {
     }
 }
 
-void send_producer_ready_msg(int producer_id, int consumer_id) {
+void send_producer_ready_msg(int producer_id, int consumer_id, int manager_port) {
 	char msg[200];
-	sprintf(msg, "%d,%d,%d", PRODUCER_READY, producer_id, consumer_id);
+	sprintf(msg, "%d,%d,%d,%d", PRODUCER_READY, producer_id, consumer_id, manager_port);
 	write(consumer_list[consumer_id].sock, msg, sizeof(msg));
 }
 
@@ -197,9 +197,9 @@ void handle_message(char* msg, int sock) {
             find_placement(client_id, spot_size, lease_time);
 			break;
         case PRODUCER_READY:
-            sscanf(msg, "%d,%d,%d", &type, &producer_id, &consumer_id);
-			printf("Message type: %d (producer-ready), from producer: %d to consumer %d\n", type, producer_id, consumer_id);
-			send_producer_ready_msg(producer_id, consumer_id);
+            sscanf(msg, "%d,%d,%d,%d", &type, &producer_id, &consumer_id, &port);
+			printf("Message type: %d (producer-ready), from producer: %d to consumer %d at port %d\n", type, producer_id, consumer_id, port);
+			send_producer_ready_msg(producer_id, consumer_id, port);
 			break;
         default:
             break;

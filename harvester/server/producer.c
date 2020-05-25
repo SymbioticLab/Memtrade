@@ -66,7 +66,7 @@ void send_producer_availability_msg(){
 
 void send_producer_ready_msg(int consumer_id) {
 	char msg[200];
-	sprintf(msg, "%d,%d,%d", PRODUCER_READY, producer.id, consumer_id);
+	sprintf(msg, "%d,%d,%d,%d", PRODUCER_READY, producer.id, consumer_id, producer.consumer_list[consumer_id].manager_port);
 	write(broker.sock, msg, sizeof(msg));
 }
 
@@ -78,10 +78,10 @@ void run_spot_manager(int consumer_id) {
 	}
 	else {
 		char redis_cmd[1024];
-/*		sprintf(redis_cmd, "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 && cgexec -g memory:%s /newdir/spot/redis/src/redis-server --bind %s --port %d --save \"\"", producer.cgroup_name, producer.ip, producer.consumer_list[consumer_id].manager_port);
+/*		sprintf(redis_cmd, "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 &&  cgexec -g memory:%s /newdir/spot/redis/src/redis-server --bind %s --port %d --save \"\"", producer.cgroup_name, producer.ip, producer.consumer_list[consumer_id].manager_port);
 */
 		long long consumer_size = producer.consumer_list[consumer_id].nslabs * g_node_size;
-		sprintf(redis_cmd, "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 && cgexec -g memory:%s /root/redis/src/redis-server --bind %s --port %d --save \"\" --maxmemory %lld --maxmemory-policy allkeys-lru", producer.cgroup_name, producer.ip, producer.consumer_list[consumer_id].manager_port, consumer_size);
+		sprintf(redis_cmd, /*"ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 &&*/ "cgexec -g memory:%s /root/redis/src/redis-server --bind %s --port %d --save \"\" --maxmemory %lld --maxmemory-policy allkeys-lru", producer.cgroup_name, producer.ip, producer.consumer_list[consumer_id].manager_port, consumer_size);
 		printf("%s", redis_cmd);
 		FILE* _pipe = popen(redis_cmd, "r");
 		//TODO: check redis status from the _pipe
@@ -91,7 +91,7 @@ void run_spot_manager(int consumer_id) {
 }
 
 void run_dstat() {
-	char* DSTAT_CMD = "dstat -Tmsg --top-mem 2>&1 | tee /root/dstat.txt";
+	char* DSTAT_CMD = "dstat -m 2>&1 | tee /root/dstat.txt";
 	FILE* _pipe = popen(DSTAT_CMD, "r");
 }
 
@@ -147,11 +147,11 @@ void harvest_decision(){
 			//TODO: add concrete evict/resize logic
             //set_spot_size(producer.harvested_memory, producer_server);
 
-            printf("EVICT | available memory: %lld MB ", (available_memory >> 20));
+/*            printf("EVICT | available memory: %lld MB ", (available_memory >> 20));
             printf("estimated available memory: %lld MB ", (cur_est_available_memory >> 20));
             printf("allocated memory: %lld MB ", (producer.harvested_memory >> 20));
             printf("evicted: %lld MB\n", ((evict_count * g_node_size) >> 20));
-        }
+*/        }
         else if (cur_est_available_memory - producer.harvested_memory > g_alloc_threshold) {
             producer.harvested_memory += g_node_size;
 
@@ -160,17 +160,17 @@ void harvest_decision(){
 			if(producer.status == REGISTERED)
 				send_producer_availability_msg();
 
-            printf("ALLOC | available memory: %lld MB ", (available_memory >> 20));
+  /*          printf("ALLOC | available memory: %lld MB ", (available_memory >> 20));
             printf("estimated available memory: %lld MB ", (cur_est_available_memory >> 20));
             printf("allocated memory: %lld MB ", (producer.harvested_memory >> 20));
-        } 
+*/        } 
         else {
 		if(producer.status == REGISTERED)
 			send_producer_availability_msg();
-            printf("SKIP  | available memory: %lld MB ", (available_memory >> 20));
+  /*          printf("SKIP  | available memory: %lld MB ", (available_memory >> 20));
             printf("estimated available memory: %lld MB ", (cur_est_available_memory >> 20));
             printf("allocated memory: %lld MB\n", (producer.harvested_memory >> 20));
-        }
+*/        }
         usleep(SLEEP_TIME);
     }
 }
