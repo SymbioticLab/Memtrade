@@ -191,7 +191,7 @@ static int atomic_entry_delete(struct tswap_entry *entry)
 	return ret;
 }
 
-static int atomic_entry_insert(struct tswap_entry *entry)
+static int atomic_entry_insert(struct tswap_entry *entry, bool try_lock)
 {
 	/* entry lock must be hold */
 	struct radix_tree_root *tswap_tree_root;
@@ -207,7 +207,21 @@ static int atomic_entry_insert(struct tswap_entry *entry)
 	}
 	tswap_tree_lock = &tswap_tree_locks[entry->type];
 
-	spin_lock_irqsave(tswap_tree_lock, flags);
+	/*
+	 * For whatever reason spin_lock_irqsave might not prevent
+	 * all types of hardware interrupt within QEMU-KVM
+	 * when prefetch_async_io_end is called, so in this case
+	 * we only trylock instead of spinning on it
+	 */
+
+	if (try_lock) {
+		if (!spin_trylock_irqsave(tswap_tree_lock, flags)) {
+			rcu_read_unlock();
+			return -EINVAL;
+		}
+	} else {
+		spin_lock_irqsave(tswap_tree_lock, flags);
+	}
 	ret = radix_tree_insert(tswap_tree_root, entry->offset, entry);
 	spin_unlock_irqrestore(tswap_tree_lock, flags);
 	entry->tswap_tree_root = (ret == 0) ? tswap_tree_root : NULL;
@@ -398,10 +412,8 @@ static void prefetch_async_io_end(struct bio *bio)
 	}
 
 	entry->time_stamp = jiffies + msecs_to_jiffies(PREFETCH_GRACE_TIME * 1000);
-	err = atomic_entry_insert(entry);
+	err = atomic_entry_insert(entry, true);
 	if (err < 0) {
-		pr_err("tswap: failed to insert prefetched entry into radix tree, ret: %d\n", err);
-
 		atomic_long_inc(&tswap_stat.nr_radix_tree_insert_fail);
 		goto invalidate_entry;
 	}
@@ -591,7 +603,7 @@ static int tswap_frontswap_store(unsigned type, pgoff_t offset,
 	}
 
 	if (!prev_entry) {
-		ret = atomic_entry_insert(entry);
+		ret = atomic_entry_insert(entry, false);
 		if (ret < 0) {
 			pr_err("tswap: failed to insert entry into radix tree, ret: %d\n", ret);
 			ret = -EINVAL;
