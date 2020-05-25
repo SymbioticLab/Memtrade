@@ -274,7 +274,7 @@ static void discharge_async_io_end(struct bio *bio)
 	int err;
 
 	atomic_long_inc(&tswap_stat.nr_async_end_io);
-	bio_err = bio->bi_error;
+	bio_err = blk_status_to_errno(bio->bi_status);
 	if (bio_err < 0) {
 		atomic_long_inc(&tswap_stat.nr_async_end_io_fail);
 		pr_err("tswap: async io failed, ret: %d\n", bio_err);
@@ -350,7 +350,7 @@ static int discharge_async_io(struct block_device *bdev, unsigned long offset,
 		goto out;
 	}
 
-	bio->bi_bdev = bdev;
+	bio_set_dev(bio, bdev);
 	bio_set_op_attrs(bio, write ? REQ_OP_WRITE : REQ_OP_READ, 0);
 
 	bio->bi_iter.bi_sector = offset;
@@ -380,7 +380,7 @@ static int sync_io(struct block_device *bdev, unsigned long offset,
 		goto out;
 	}
 
-	bio->bi_bdev = bdev;
+	bio_set_dev(bio, bdev);
 	bio_set_op_attrs(bio, write ? REQ_OP_WRITE : REQ_OP_READ, 0);
 
 	bio->bi_iter.bi_sector = offset;
@@ -403,7 +403,7 @@ static void prefetch_async_io_end(struct bio *bio)
 	atomic_long_inc(&tswap_stat.nr_async_end_io);
 
 	spin_lock_irqsave(&entry->lock, flags);
-	bio_err = bio->bi_error;
+	bio_err = blk_status_to_errno(bio->bi_status);
 	if (bio_err < 0) {
 		atomic_long_inc(&tswap_stat.nr_async_end_io_fail);
 		pr_err("tswap: prefetch async io failed, ret: %d\n", bio_err);
@@ -447,7 +447,7 @@ static int prefetch_async_io(struct block_device *bdev, unsigned long offset,
 		goto out;
 	}
 
-	bio->bi_bdev = bdev;
+	bio_set_dev(bio, bdev);
 	bio_set_op_attrs(bio, write ? REQ_OP_WRITE : REQ_OP_READ, 0);
 
 	bio->bi_iter.bi_sector = offset;
@@ -742,7 +742,7 @@ static void tswap_frontswap_invalidate_area(unsigned type)
 {
 	struct radix_tree_root *tswap_tree_root;
 	struct tswap_entry *entry;
-	unsigned long flags;
+	unsigned long flags = 0;
 	int err;
 
 	atomic_long_inc(&tswap_stat.nr_invalidate_area);
