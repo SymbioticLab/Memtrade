@@ -76,7 +76,7 @@ struct {
 	int port;
 	int id;
 	int consumer_count;
-	char* cgroup_name;
+	char cgroup_name[20];
     long long total_memory;
     long long harvested_memory;
     long long est_available_memory;
@@ -98,9 +98,9 @@ struct {
 // redisContext* connect_server(const char *addr, int port, struct timeval timeout);
 
 const float g_ewma_beta = 0.2;
-const long long g_alloc_threshold = (8l << 30);
-const long long g_evict_threshold = (1l << 30);
-const long long g_node_size = (512l << 20);
+const long long g_alloc_threshold = (512l << 20);
+const long long g_evict_threshold = (512l << 20);
+const long long g_node_size = (64l << 20);
 
 long long get_total_memory_size() {
     FILE* mem_info = fopen("/proc/meminfo", "r");
@@ -181,6 +181,7 @@ out:
 
 long long get_cgroup_rss() {
     char cgroup_path[CGROUP_PATH_MAX_LEN];
+#if 0
     sprintf(cgroup_path, "/sys/fs/cgroup/memory/%s/memory.stat", producer.cgroup_name);
 
     FILE* cgroup_stat = fopen(cgroup_path, "r");
@@ -200,6 +201,8 @@ long long get_cgroup_rss() {
     }
 //    printf("rss for %s cgroup: %ld\n", cgroup_name, rss);
     return rss;
+#endif
+    return 0;
 }
 
 long long get_tswap_memory_size() {

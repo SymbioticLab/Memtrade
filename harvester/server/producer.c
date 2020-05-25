@@ -15,7 +15,7 @@ void portal_parser(char* msg) {
 	//portal format 1,2,192.168.0.12:8000:10:1,192.168.0.11:9400:20
 	//<msg_type>,<consumer_count>,<ip:port:slab_size:id>, ...
 
-	char ptr[1024], s[] = ",:", *addr;
+	char ptr[1024], s[] = ",:", addr[200];
 	memcpy(ptr, msg, strlen(msg));
 	char* token = strtok(ptr, s);
 	int token_count = 0, type, consumer_count = 0, port, size, id;
@@ -39,6 +39,7 @@ void portal_parser(char* msg) {
 			size = atoi(token); 
 		}
 		else {
+			printf("all parsed\n");
 			id = atoi(token);
 			producer.consumer_list[id].id = id;
 			producer.consumer_list[id].port = port;
@@ -76,10 +77,13 @@ void run_spot_manager(int consumer_id) {
 		send_producer_ready_msg(consumer_id);
 	}
 	else {
-		char redis_cmd[400];
-		sprintf(redis_cmd, "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 && cgexec -g memory:%s /newdir/spot/redis/src/redis-server --bind %s --port %d --save \"\"", producer.cgroup_name, producer.ip, producer.consumer_list[consumer_id].manager_port);
+		char redis_cmd[1024];
+/*		sprintf(redis_cmd, "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 && cgexec -g memory:%s /newdir/spot/redis/src/redis-server --bind %s --port %d --save \"\"", producer.cgroup_name, producer.ip, producer.consumer_list[consumer_id].manager_port);
+*/
+		long long consumer_size = producer.consumer_list[consumer_id].nslabs * g_node_size;
+		sprintf(redis_cmd, "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 && cgexec -g memory:%s /root/redis/src/redis-server --bind %s --port %d --save \"\" --maxmemory %lld --maxmemory-policy allkeys-lru", producer.cgroup_name, producer.ip, producer.consumer_list[consumer_id].manager_port, consumer_size);
 		printf("%s", redis_cmd);
-//		FILE* _pipe = popen(redis_cmd, "r");
+		FILE* _pipe = popen(redis_cmd, "r");
 		//TODO: check redis status from the _pipe
 		producer.consumer_list[consumer_id].manager_state = RUNNING;
 		send_producer_ready_msg(consumer_id);
@@ -156,6 +160,8 @@ void harvest_decision(){
             printf("allocated memory: %lld MB ", (producer.harvested_memory >> 20));
         } 
         else {
+		if(producer.status == REGISTERED)
+			send_producer_availability_msg();
             printf("SKIP  | available memory: %lld MB ", (available_memory >> 20));
             printf("estimated available memory: %lld MB ", (cur_est_available_memory >> 20));
             printf("allocated memory: %lld MB\n", (producer.harvested_memory >> 20));
@@ -205,6 +211,7 @@ void init() {
 	strcpy(producer.ip, PRODUCER_IP);
 	producer.port = PRODUCER_PORT;
 	producer.status = INIT;
+	strcpy(producer.cgroup_name, "spot");
 
 	producer.consumer_count = MAX_CONSUMER;
 	for(i=0; i<producer.consumer_count; i++) {
@@ -249,7 +256,8 @@ int main(int argc, char *argv[]) {
 			producer.port = atoi(optarg);
 			break;
 		case 'g':
-			producer.cgroup_name = optarg;
+			//producer.cgroup_name = optarg;
+			//printf("%s\n",optarg);
 			break;
 		default:
 			break;
