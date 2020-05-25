@@ -90,6 +90,11 @@ void run_spot_manager(int consumer_id) {
 	}
 }
 
+void run_dstat() {
+	char* DSTAT_CMD = "dstat -Tmsg --top-mem 2>&1 | tee /root/dstat.txt";
+	FILE* _pipe = popen(DSTAT_CMD, "r");
+}
+
 void handle_message(char* msg) {
 	int type, i;
 	
@@ -224,6 +229,7 @@ void init() {
 	producer.harvested_memory = 0;
 	nslab = 40;
 	available_slab = 20;
+	run_dstat();
 }
 
 void usage() {
