@@ -9,7 +9,7 @@
 
 #define BROKER_IP "192.168.122.91"
 #define BROKER_PORT 9700 
-#define CONSUMER_IP "128.105.144.197"
+#define CONSUMER_IP "192.168.122.202"
 #define CONSUMER_PORT 9704 
 #define MAX_CLIENT 128
 #define MAX_PRODUCER 128
@@ -41,6 +41,7 @@ struct producer_info_t {
 	int port;
 	int nslabs;
 	int id;
+	int manager_port;
 	int manager_state;
 };
 
@@ -114,7 +115,7 @@ void send_spot_request() {
 }
 
 void handle_message(char* msg) {
-	int type, i, producer_id, consumer_id;
+	int type, i, producer_id, consumer_id, manager_port;
 	
 	sscanf(msg, "%d,", &type);
 	printf("Message type: %d, %s\n", type, msg);
@@ -135,8 +136,9 @@ void handle_message(char* msg) {
 				}
 			}
 		case PRODUCER_READY:
-            sscanf(msg, "%d,%d,%d", &type, &producer_id, &consumer_id);
-			printf("Message type: %d (producer-ready), from producer: %d to consumer %d\n", type, producer_id, consumer_id);
+            sscanf(msg, "%d,%d,%d,%d", &type, &producer_id, &consumer_id, &manager_port);
+			printf("Message type: %d (producer-ready), from producer: %d to consumer %d at manager port %d\n", type, producer_id, consumer_id, manager_port);
+			consumer.producer_list[producer_id].manager_port = manager_port;
 			consumer.producer_list[producer_id].manager_state = RUNNING;
 			//TODO: check for the correctness of the remote-local ratio; especially when multiple producers are mapped for a single request 
 			run_consumer_app(producer_id);
@@ -148,18 +150,18 @@ void handle_message(char* msg) {
 }
 
 void run_consumer_app(int producer_id) {
-	char consumer_cmd[400];
-	sprintf(consumer_cmd, "cd /newdir/spot/YCSB && ./bin/ycsb load redis -s -P workloads/workloada -p \"redis.consumer_host=127.0.0.1\" -p \"redis.consumer_port=6379\"  -p \"redis.host=%s\" -p \"redis.port=%d\" 2>&1 | tee /newdir/ycsb.txt", consumer.producer_list[producer_id].ip, consumer.producer_list[producer_id].port);
+	char consumer_cmd[1024];
+	sprintf(consumer_cmd, "cd /root/YCSB && ./bin/ycsb load redis -s -P workloads/workloada -p \"redis.consumer_host=127.0.0.1\" -p \"redis.consumer_port=6379\"  -p \"redis.host=%s\" -p \"redis.port=%d\" -p \"redis.remote_ratio=%d\" 2>&1 | tee /root/ycsb.txt", consumer.producer_list[producer_id].ip, consumer.producer_list[producer_id].manager_port, consumer.remote_ratio);
 
 	printf("%s\n", consumer_cmd);
-//	FILE* _pipe = popen(consumer_cmd, "r");
+	FILE* _pipe = popen(consumer_cmd, "r");
 	//TODO: check the status of the application from the _pipe
 }
 
 void run_consumer_redis() {
-	char *redis_cmd = "ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 && /newdir/spot/redis/src/redis-server /newdir/spot/redis/redis.conf";
+	char *redis_cmd = /*"ps -aux | grep redis-server | grep -v grep | awk '{ print $2 }' | xargs kill -9 &&*/ "/root/redis/src/redis-server --bind 127.0.0.1 --port 6379 --save \"\"";
 	printf("%s\n", redis_cmd);
-//	FILE* _pipe = popen(redis_cmd, "r");
+	FILE* _pipe = popen(redis_cmd, "r");
 	//TODO: check redis status from the _pipe
 }
 
