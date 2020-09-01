@@ -1,0 +1,42 @@
+cgroup_name: "app"
+
+performance_metric:
+  file_path: "/tmp/latency"
+  higher_better: false
+
+baseline_estimation:
+  window_size: 3600  # 1 hr
+  minimal_baseline_size: 600  # 10 min
+
+performance_drop_detection:
+  recent_window_size: 600  # 10 min
+  outlier_prob: 0.9
+  ks_distance: 0.05
+
+control_loop:
+  enable: true
+  sleep_time: 1
+  harvest:
+    step_size: 67108864  # 64 MB
+    sleep_time: 300  # 5 min
+  recovery:
+    step_size: 268435456  # 256 MB
+    step_mi: 2
+    sleep_time: 1
+  recovery_time:
+    ad: 30
+    mi: 2
+    min: 30
+    max: 600
+  prefetch:
+    size: 33554432  # 32 MB
+    outlier_prob: 1
+
+logging:
+  file_path: "/tmp/logging.csv"
+
+silo:
+  stat_path: "/sys/kernel/tswap/tswap_stat"
+  promotion_rate_path: "/sys/kernel/tswap/tswap_nr_promoted_page"
+  disk_promotion_rate_path: "/sys/kernel/tswap/tswap_nr_disk_promoted_page"
+  prefetch_path: "/sys/kernel/tswap/tswap_prefetch"

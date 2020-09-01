@@ -1,0 +1,35 @@
+cgroup_name: "app"
+
+performance_drop_detection:
+  promo_rate: 4194304  # 4 MB
+  disk_promo_rate: 65536  # 64 KB
+
+control_loop:
+  enable: true
+  sleep_time: 1
+  harvest:
+    step_size: 67108864  # 64 MB
+    sleep_time: 300  # 5 min
+  recovery:
+    step_size: 268435456  # 256 MB
+    step_mi: 2
+    sleep_time: 1
+  recovery_time:
+    ad: 30
+    mi: 2
+    min: 30
+    max: 600
+  prefetch:
+    promo_rate: 536870912  # 512 MB
+    disk_promo_rate: 134217728  # 128 MB
+    size: 33554432  # 32 MB
+
+logging:
+  file_path: "/tmp/logging.csv"
+  performance_file_path: "/tmp/latency"
+
+silo:
+  stat_path: "/sys/kernel/tswap/tswap_stat"
+  promotion_rate_path: "/sys/kernel/tswap/tswap_nr_promoted_page"
+  disk_promotion_rate_path: "/sys/kernel/tswap/tswap_nr_disk_promoted_page"
+  prefetch_path: "/sys/kernel/tswap/tswap_prefetch"
