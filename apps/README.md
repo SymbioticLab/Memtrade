@@ -301,9 +301,9 @@
   sudo apt-get install -y docker.io
   
   # Run MySQL + Memcached + WebServer
-  WEB_SERVER_IP=$( ifconfig  | grep 'inet '| grep -v '127.0.0.1' | cut -d ' ' -f 10 | tail -1)
-  DATABASE_SERVER_IP=$( ifconfig  | grep 'inet '| grep -v '127.0.0.1' | cut -d ' ' -f 10 | tail -1)
-  MEMCACHED_SERVER_IP=$( ifconfig  | grep 'inet '| grep -v '127.0.0.1' | cut -d ' ' -f 10 | tail -1)
+  WEB_SERVER_IP=$( ifconfig  | grep 'inet '| grep -v '127.0.0.1' | grep -v '192.168.123.1' | cut -d ' ' -f 10 | tail -1)
+  DATABASE_SERVER_IP=$( ifconfig  | grep 'inet '| grep -v '127.0.0.1' | grep -v '192.168.123.1' | cut -d ' ' -f 10 | tail -1)
+  MEMCACHED_SERVER_IP=$( ifconfig  | grep 'inet '| grep -v '127.0.0.1' | grep -v '192.168.123.1' | cut -d ' ' -f 10 | tail -1)
   sudo cgcreate -g memory:app
   sudo docker run -dt --net=host --name=mysql_server --cgroup-parent=/app/ cloudsuite/web-serving:db_server ${WEB_SERVER_IP}
   sudo docker run -dt --net=host --name=memcache_server --cgroup-parent=/app/ cloudsuite/web-serving:memcached_server
