@@ -450,8 +450,8 @@
   ```bash
   git clone https://github.com/yuhong-zhong/streaming-benchmarks.git
   cd streaming-benchmarks
-  g++ atomic_write.cpp -o atomic_write -std=c++14
   ./stream-bench.sh SETUP
+  g++ atomic_write.cpp -o atomic_write -std=c++14
   ```
 
 * Config Redis which is used by the streaming benchmark:
