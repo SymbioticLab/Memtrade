@@ -448,6 +448,7 @@
 * Install Yahoo Streaming Benchmark: (make sure you have enough space)
 
   ```bash
+  sudo apt-get install leiningen jq
   git clone https://github.com/yuhong-zhong/streaming-benchmarks.git
   cd streaming-benchmarks
   ./stream-bench.sh SETUP
@@ -481,7 +482,7 @@
 * Run Yahoo Streaming Benchmark with a given test time:
 
   ```bash
-  export TEST_TIME=1800  # run with 1800 seconds
+  export TEST_TIME=21600  # run with 21600 seconds
   ./stream-bench.sh STORM_TEST
   ```
 
