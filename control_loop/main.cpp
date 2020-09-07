@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <cstring>
+#include <cmath>
 #include "yaml-cpp/yaml.h"
 #include "config.h"
 #include "avl_tree.h"
@@ -196,6 +197,9 @@ float get_performance() {
 
 	float performance;
 	sscanf(buffer, "%f", &performance);
+	if (!isfinite(performance)) {
+		cout << "[WARNING] performance not finite" << endl;
+	}
 
 	file_read_unlock(g_ctx.perf_fd);
 	return performance;
@@ -448,7 +452,7 @@ int main(int argc, char *argv[]) {
 			g_ctx.baseline_list.pop_front();
 			g_ctx.baseline_tree.remove(expired_perf);
 		}
-		if (promotion_rate == 0) {
+		if (promotion_rate == 0 && isfinite(performance)) {
 			g_ctx.baseline_list.push_back(cur_perf);
 			g_ctx.baseline_tree.insert(cur_perf);
 		}
@@ -461,14 +465,16 @@ int main(int argc, char *argv[]) {
 			g_ctx.recent_list.pop_front();
 			g_ctx.recent_tree.remove(expired_perf);
 		}
-		g_ctx.recent_list.push_back(cur_perf);
-		g_ctx.recent_tree.insert(cur_perf);
+		if (isfinite(performance)) {
+			g_ctx.recent_list.push_back(cur_perf);
+			g_ctx.recent_tree.insert(cur_perf);
+		}
 
 		/* run performance drop detection */
 		bool valid_baseline = (g_ctx.baseline_list.size()
 				       >= g_ctx.config.baseline_estimation.minimal_baseline_size);
 		float outlier_prob = valid_baseline ? g_ctx.baseline_tree.percent_greater(cur_perf, false) : 1;
-		if (promotion_rate == 0) {
+		if (promotion_rate == 0 || !isfinite(performance)) {
 			outlier_prob = 0;
 		}
 		float ks_distance = valid_baseline ? get_ks_distance() : 1;
