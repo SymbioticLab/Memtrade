@@ -482,7 +482,7 @@
 * Run Yahoo Streaming Benchmark with a given test time:
 
   ```bash
-  export TEST_TIME=21600  # run with 21600 seconds
+  export TEST_TIME=7200  # run with 7200 seconds
   ./stream-bench.sh STORM_TEST
   ```
 
