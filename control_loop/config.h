@@ -45,7 +45,8 @@ struct control_config {
 		} recovery_time;
 		struct {
 			long size;
-			float outlier_prob;
+			long window_size;
+			float ks_distance;
 		} prefetch;
 	} control_loop;
 
@@ -99,7 +100,8 @@ control_config control_config::parse_yaml(YAML::Node &root) {
 	config.control_loop.recovery_time.max = recovery_time["max"].as<int>();
 	YAML::Node prefetch = control_loop["prefetch"];
 	config.control_loop.prefetch.size = prefetch["size"].as<long>();
-	config.control_loop.prefetch.outlier_prob = prefetch["outlier_prob"].as<float>();
+	config.control_loop.prefetch.window_size = prefetch["window_size"].as<long>();
+	config.control_loop.prefetch.ks_distance = prefetch["ks_distance"].as<float>();
 
 	YAML::Node logging = root["logging"];
 	config.logging.file_path = logging["file_path"].as<string>();

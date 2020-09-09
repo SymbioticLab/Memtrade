@@ -30,7 +30,8 @@ control_loop:
     max: 600
   prefetch:
     size: 33554432  # 32 MB
-    outlier_prob: 1
+    window_size: 3
+    ks_distance: 1
 
 logging:
   file_path: "/tmp/logging.csv"

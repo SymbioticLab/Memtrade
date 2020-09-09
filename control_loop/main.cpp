@@ -50,6 +50,9 @@ struct control_context {
 	avl_tree<perf_point> recent_tree;
 	list<perf_point> recent_list;
 
+	avl_tree<perf_point> prefetch_tree;
+	list<perf_point> prefetch_list;
+
 	/* recovery time */
 	chrono::time_point<chrono::steady_clock> recovery_start_time;
 	int recovery_time;
@@ -305,15 +308,15 @@ void silo_prefetch(long prefetch_size) {
 	file << (prefetch_size >> PAGE_SHIFT) << endl;
 }
 
-float get_ks_distance() {
+float get_ks_distance(avl_tree<perf_point> &baseline_tree, avl_tree<perf_point> &recent_tree) {
 	/* calculate one-side Kolmogorov-Smirnov distance */
 	float ks_distance = 0;
 
-	avl_tree<perf_point>::iterator recent_iterator(g_ctx.recent_tree);
-	avl_tree<perf_point>::iterator baseline_iterator(g_ctx.baseline_tree);
+	avl_tree<perf_point>::iterator recent_iterator(recent_tree);
+	avl_tree<perf_point>::iterator baseline_iterator(baseline_tree);
 
-	float recent_step = 1.0f / (float) g_ctx.recent_tree.size();
-	float baseline_step = 1.0f / (float) g_ctx.baseline_tree.size();
+	float recent_step = 1.0f / (float) recent_tree.size();
+	float baseline_step = 1.0f / (float) baseline_tree.size();
 
 	float recent_cur_cdf = 0;
 	float baseline_cur_cdf = 0;
@@ -470,6 +473,19 @@ int main(int argc, char *argv[]) {
 			g_ctx.recent_tree.insert(cur_perf);
 		}
 
+		/* update prefetch recent performance */
+		while (!g_ctx.prefetch_list.empty()
+		       && g_ctx.prefetch_list.front().timestamp
+		          <= g_ctx.timestamp - g_ctx.config.control_loop.prefetch.window_size) {
+			perf_point expired_perf = g_ctx.prefetch_list.front();
+			g_ctx.prefetch_list.pop_front();
+			g_ctx.prefetch_tree.remove(expired_perf);
+		}
+		if (isfinite(performance)) {
+			g_ctx.prefetch_list.push_back(cur_perf);
+			g_ctx.prefetch_tree.insert(cur_perf);
+		}
+
 		/* run performance drop detection */
 		bool valid_baseline = (g_ctx.baseline_list.size()
 				       >= g_ctx.config.baseline_estimation.minimal_baseline_size);
@@ -477,7 +493,7 @@ int main(int argc, char *argv[]) {
 		if (promotion_rate == 0 || !isfinite(performance)) {
 			outlier_prob = 0;
 		}
-		float ks_distance = valid_baseline ? get_ks_distance() : 1;
+		float ks_distance = valid_baseline ? get_ks_distance(g_ctx.baseline_tree, g_ctx.recent_tree) : 1;
 
 		/* handle state transition */
 		std::unique_lock<std::mutex> lock(g_ctx.state_lock);
@@ -521,7 +537,10 @@ int main(int argc, char *argv[]) {
 		}
 
 		/* prefetch */
-		if (outlier_prob >= g_ctx.config.control_loop.prefetch.outlier_prob) {
+		if (valid_baseline
+		    && g_ctx.prefetch_list.size() == g_ctx.config.control_loop.prefetch.window_size
+		    && get_ks_distance(g_ctx.baseline_tree, g_ctx.prefetch_tree)
+		       >= g_ctx.config.control_loop.prefetch.ks_distance) {
 			silo_prefetch(g_ctx.config.control_loop.prefetch.size);
 			cout << "[INFO] prefetched" << endl;
 		}
