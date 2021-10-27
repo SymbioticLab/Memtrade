@@ -179,11 +179,11 @@
 
 - Install RocksDB
     ```sh
-    sudo apt-get install libgflags-dev libsnappy-dev zlib1g-dev libbz2-dev libzstd-dev # dependency packages, libzstd-dev is available for xenial or later distributions
+    sudo apt-get install libgflags-dev libsnappy-dev zlib1g-dev libbz2-dev liblz4-dev libzstd-dev # dependency packages, libzstd-dev is available for xenial or later distributions
     git clone https://github.com/facebook/rocksdb.git
     cd rocksdb/
-    git checkout tags/v6.8.1
-    make all -j32
+    git checkout tags/v6.25.3
+    make release -j32
     ```
 - Run [Bulk Load](https://github.com/facebook/rocksdb/wiki/Performance-Benchmarks#test-1-bulk-load-of-keys-in-random-order) benchmark
     - [Add 1TB Disk](#add-1tb-disk)
